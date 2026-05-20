@@ -3,6 +3,7 @@ import { Upload, ImagePlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { TC_MEBLE_PRODUCTS, type Product } from "@/lib/products";
+import Logo from "@/components/Logo";
 
 interface Props {
   onNext: (images: string[], description: string, name: string) => void;
@@ -59,7 +60,7 @@ export default function ProductStep({ onNext }: Props) {
     <div className="min-h-screen flex flex-col">
       {/* Header */}
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
-        <span className="font-serif text-xl text-primary">Roomora</span>
+        <Logo />
         <StepIndicator current={1} />
       </header>
 

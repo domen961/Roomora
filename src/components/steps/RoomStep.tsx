@@ -3,6 +3,7 @@ import { ArrowLeft, Camera, ImageIcon, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { placeInRoom } from "@/lib/gemini";
+import Logo from "@/components/Logo";
 
 interface Props {
   product: { images: string[]; description: string; name: string };
@@ -196,7 +197,7 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
           <ArrowLeft className="h-4 w-4" />
           Back
         </button>
-        <span className="font-serif text-xl text-primary">Roomora</span>
+        <Logo />
         <StepIndicator current={2} />
       </header>
 
