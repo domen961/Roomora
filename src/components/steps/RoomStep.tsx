@@ -94,8 +94,8 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
   // ── Processing ──────────────────────────────────────────────────────────────
   if (phase === "processing") {
     return (
-      <div className="min-h-screen bg-primary flex flex-col items-center justify-center gap-5 text-primary-foreground px-6 text-center">
-        <Loader2 className="h-10 w-10 animate-spin opacity-70" />
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-5 text-foreground px-6 text-center">
+        <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <div>
           <p className="font-serif text-2xl mb-1">Placing in your room…</p>
           <p className="text-xs uppercase tracking-widest opacity-50">Gemini AI is working</p>

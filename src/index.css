@@ -4,36 +4,36 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99%;
-    --foreground: 220 20% 12%;
+    --background: 0 0% 11%;
+    --foreground: 0 0% 92%;
 
-    --card: 0 0% 100%;
-    --card-foreground: 220 20% 12%;
+    --card: 0 0% 15%;
+    --card-foreground: 0 0% 92%;
 
-    --primary: 220 20% 12%;
-    --primary-foreground: 0 0% 99%;
+    --primary: 35 95% 52%;           /* logo orange #F59E0B */
+    --primary-foreground: 0 0% 8%;
 
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 220 20% 12%;
+    --secondary: 0 0% 19%;
+    --secondary-foreground: 0 0% 92%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 10% 50%;
+    --muted: 0 0% 17%;
+    --muted-foreground: 0 0% 52%;
 
-    --accent: 22 85% 58%;
-    --accent-foreground: 0 0% 100%;
+    --accent: 35 95% 52%;
+    --accent-foreground: 0 0% 8%;
 
-    --destructive: 0 70% 50%;
+    --destructive: 0 65% 52%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 220 20% 12%;
+    --border: 0 0% 21%;
+    --input: 0 0% 21%;
+    --ring: 35 95% 52%;
 
     --radius: 0.5rem;
 
-    --shadow-sm: 0 1px 3px hsl(220 20% 12% / 0.06);
-    --shadow-md: 0 8px 24px -8px hsl(220 20% 12% / 0.12);
-    --shadow-lg: 0 20px 50px -20px hsl(220 20% 12% / 0.16);
+    --shadow-sm: 0 1px 3px hsl(0 0% 0% / 0.3);
+    --shadow-md: 0 8px 24px -8px hsl(0 0% 0% / 0.5);
+    --shadow-lg: 0 20px 50px -20px hsl(0 0% 0% / 0.6);
   }
 }
 
