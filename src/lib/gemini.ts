@@ -363,9 +363,9 @@ export async function placeInRoom(
     `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
     `Editing instructions:\n` +
-    `1. If there is an existing ${productDescription} in the CANVAS photo, erase it and fill the area naturally with the floor/wall behind it.\n` +
+    `1. MANDATORY — remove existing furniture of the same category: Scan the entire CANVAS photo for any existing ${productLabel.toLowerCase()} or any furniture of the same type (regardless of its style, colour, size, shape, or material — it does not need to look like the reference). Remove ALL of it completely. Fill every removed area with realistic floor, wall, or ceiling texture that matches the surrounding area seamlessly. Leave absolutely no trace of the old furniture. This step is non-negotiable even if the existing item looks very different from the reference.\n` +
     `2. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +
-    `3. Place it on the floor in the most natural position, or where the old one was.${dimNote}\n` +
+    `3. Place it on the floor in the most natural position, or exactly where the old one was.${dimNote}\n` +
     `4. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
     `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
     `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
