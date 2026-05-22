@@ -369,7 +369,7 @@ export async function placeInRoom(
     `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
     `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
     `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `6. Do NOT change the framing, zoom level, or crop of the image. Every part of the CANVAS that was visible must still be visible in the output at the same position and scale. If the ${productLabel.toLowerCase()} is too large to fit, scale it down — never zoom in or crop any part of the scene.\n\n` +
+    `6. Do NOT change the framing, zoom level, or crop of the image. Every part of the CANVAS that was visible must still be visible in the output at the same position and scale. Do NOT scale down the ${productLabel.toLowerCase()} to make it fit — if it is too large for the frame, let it be partially cropped at the edges. Accurate real-world scale is more important than fitting the entire product in frame.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
