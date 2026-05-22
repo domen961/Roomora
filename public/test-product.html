@@ -170,6 +170,37 @@
     }
     footer a { color: #aaa; text-decoration: none; }
     footer a:hover { color: #fff; }
+
+    /* ── MOBILE ────────────────────────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      header { padding: 0 16px; height: 56px; }
+      nav { display: none; }
+      .header-right .phone { display: none; }
+
+      .breadcrumb { padding: 10px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      .product {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        margin: 20px auto;
+        padding: 0 16px;
+      }
+
+      .gallery-thumbs img { width: 60px; height: 60px; }
+
+      .product-name { font-size: 21px; }
+      .price { font-size: 24px; }
+
+      .description { padding: 0 16px; margin-bottom: 40px; }
+
+      footer {
+        flex-direction: column;
+        gap: 16px;
+        padding: 28px 16px;
+        text-align: center;
+      }
+      footer div { flex-wrap: wrap; justify-content: center; gap: 16px; }
+    }
   </style>
 </head>
 <body>
@@ -184,7 +215,7 @@
       <a href="#">Akcesoria</a>
     </nav>
     <div class="header-right">
-      <span>+48 12 345 67 89</span>
+      <span class="phone">+48 12 345 67 89</span>
       <span>🛒 0</span>
     </div>
   </header>
