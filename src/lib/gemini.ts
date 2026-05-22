@@ -1,4 +1,4 @@
-const GEMINI_MODEL       = "gemini-2.5-flash-image";
+const GEMINI_MODEL       = "gemini-2.0-flash-preview-image-generation";
 const GEMINI_TEXT_MODEL = "gemini-2.5-flash";
 
 function getEndpoint() {
@@ -329,45 +329,38 @@ export async function placeInRoom(
   const origW = origImg.width;
   const origH = origImg.height;
 
-  // Smaller images = faster upload + faster model processing
-  const roomResized = await resizeImage(roomPhoto, 1280, 1280, 0.88);
+  const roomResized = await resizeImage(roomPhoto, 1024, 1024, 0.85);
 
   const parts: unknown[] = [];
 
   if (productImages.length > 0) {
-    // Convert any Supabase / HTTP URLs to base64 before canvas ops
     const dataUrls = await Promise.all(productImages.slice(0, 2).map(toDataUrl));
-    const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 768, 768, 0.85)));
+    const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 640, 640, 0.82)));
 
     if (resized[0]) {
       parts.push(
-        { text: "PRODUCT REFERENCE — study this furniture piece: its exact material, colour, shape, proportions, and style. Ignore any styling props (chairs, decorations, tableware, flowers, lamps, etc.) shown alongside it — focus only on the main product." },
+        { text: "Product reference photo — memorise its shape, material, colour, and style. Ignore any props around it." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } },
       );
     }
     if (resized[1]) {
       parts.push(
-        { text: "SECONDARY PRODUCT VIEW — use this to understand the product's exact outline, depth, and details. Focus on the main piece only, ignore props." },
+        { text: "Second product view — use for outline and depth." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } },
       );
     }
   }
 
   const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
-    ? ` The product's real dimensions are:${dimensions?.length_cm ? ` length ${dimensions.length_cm} cm` : ""}${dimensions?.width_cm ? `, width ${dimensions.width_cm} cm` : ""}${dimensions?.height_cm ? `, height ${dimensions.height_cm} cm` : ""}. Use these to set correct proportional scale relative to the room's architecture.`
-    : " Use the room's architectural elements (door frames, skirting boards, floor tiles) to judge realistic scale.";
+    ? ` Product dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
+    : "";
 
   parts.push(
-    { text: "ROOM PHOTO — edit this image:" },
+    { text: "Room photo to edit:" },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
     {
       text:
-        `Edit the room photo above to place the product "${productDescription}".\n\n` +
-        "STEP 1 — CLEAR: Identify the furniture category of the product. Remove ALL existing items in the room that belong to that same category (regardless of colour, size, or style). Fill vacated areas with realistic floor/wall/background textures that blend seamlessly — no ghost outlines, no blank patches.\n\n" +
-        "STEP 2 — PLACE: Put ONLY the main product (from the reference images above, or matching the description if no images) into the cleared space. Copy its exact material, colour, shape, and style. Position it naturally on the floor, centred in the main area, with the viewing angle matching the room's perspective.\n\n" +
-        `STEP 3 — INTEGRATE: Scale it realistically.${dimNote} Match the room's lighting and shadows. Add a soft drop shadow beneath the product.\n\n` +
-        "⚠️ CRITICAL FRAMING RULE: The output must have the EXACT same crop, field of view, and aspect ratio as the input room photo. Do NOT zoom in, pan, or reframe in any way.\n\n" +
-        "Output only the final edited photo. No text.",
+        `Edit this room: (1) Remove all existing "${productDescription}" furniture from the room and fill gaps with matching floor/wall textures. (2) Place the product from the reference images naturally on the floor, matching the room's perspective and lighting.${dimNote} Scale it realistically to the room. Add a soft shadow. (3) Keep everything else unchanged. Same crop and framing as input — no zoom or reframe. Output the edited photo only.`,
     },
   );
 
