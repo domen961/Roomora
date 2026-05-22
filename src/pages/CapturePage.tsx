@@ -143,15 +143,18 @@ export default function CapturePage() {
   const handleCapture = async () => {
     const video = videoRef.current;
     if (!video || !token) return;
-    streamRef.current?.getTracks().forEach((t) => t.stop());
 
-    const maxPx = 1024;
+    // Draw the frame BEFORE stopping the stream — stopping first can blank the video
+    const maxPx = 1280;
     const scale = Math.min(1, maxPx / Math.max(video.videoWidth || 1280, video.videoHeight || 720));
     const canvas = document.createElement("canvas");
     canvas.width  = Math.round((video.videoWidth  || 1280) * scale);
     canvas.height = Math.round((video.videoHeight || 720)  * scale);
     canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
-    await processPhoto(canvas.toDataURL("image/jpeg", 0.85));
+    const photo = canvas.toDataURL("image/jpeg", 0.92);
+
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    await processPhoto(photo);
   };
 
   // ── Pick from gallery ─────────────────────────────────────────────────────

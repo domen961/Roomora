@@ -329,20 +329,25 @@ export async function placeInRoom(
   const origW = origImg.width;
   const origH = origImg.height;
 
-  const roomResized = await resizeImage(roomPhoto, 1024, 1024, 0.85);
+  const roomResized = await resizeImage(roomPhoto, 1536, 1536, 0.92);
 
   // Room photo goes FIRST so Gemini treats it as the canvas to edit
   const parts: unknown[] = [
     {
       text:
-        "⚠️ THIS IS THE ROOM YOU MUST EDIT. Your output must be this exact room photo with only the furniture changed — same walls, same floor, same lighting, same perspective, same everything. Do NOT generate a new room.",
+        "⚠️ ROOM PHOTO — THIS IS YOUR CANVAS. " +
+        "You must output this EXACT room with only the furniture swapped. " +
+        "CRITICAL FRAMING RULE: the output image must have the IDENTICAL field of view, zoom level, " +
+        "composition, and aspect ratio as this input photo. " +
+        "Do NOT zoom in. Do NOT zoom out. Do NOT pan. Do NOT crop. Do NOT change the camera angle. " +
+        "The output must look like a screenshot taken at the exact same moment with the exact same camera position — only the furniture is different.",
     },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
   ];
 
   if (productImages.length > 0) {
     const dataUrls = await Promise.all(productImages.slice(0, 2).map(toDataUrl));
-    const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 640, 640, 0.82)));
+    const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)));
 
     if (resized[0]) {
       parts.push(
@@ -364,11 +369,13 @@ export async function placeInRoom(
 
   parts.push({
     text:
-      `Now edit the room photo above (the first image): ` +
+      `Edit the room photo (the first image above): ` +
       `(1) Remove any existing ${productDescription} already in the room and fill the gap with realistic floor/wall texture. ` +
-      `(2) Place the product from the reference images on the floor in a natural position, matching the room's perspective and lighting.${dimNote} Scale it to look physically correct. Add a soft shadow. ` +
-      `(3) Leave every other part of the room completely untouched — walls, floor, ceiling, all other objects, lighting. ` +
-      `Output only the edited room photo. Same crop, same framing, no zoom.`,
+      `(2) Place the product shown in the reference images on the floor in a natural position, matching the room's existing perspective and lighting.${dimNote} Scale it to look physically correct relative to other objects in the room. Add a soft realistic shadow beneath it. ` +
+      `(3) Leave every other part of the room completely untouched — walls, floor, ceiling, all other furniture, all objects, lighting, and colours. ` +
+      `⚠️ FRAMING CONSTRAINT (non-negotiable): the output image must have the EXACT same zoom, field of view, and composition as the input room photo. ` +
+      `Do NOT zoom in, do NOT zoom out, do NOT crop, do NOT shift the camera. ` +
+      `Output only the edited room photo with no extra text.`,
   });
 
   const raw = await callGemini(parts);
