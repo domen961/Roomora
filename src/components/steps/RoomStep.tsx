@@ -46,7 +46,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
   useEffect(() => {
     if (isMobile) return;
     QRCode.toDataURL(captureUrl, {
-      width: 200,
+      width: 280,
       margin: 2,
       color: { dark: "#F59E0B", light: "#1c1c1c" },
     })
@@ -262,8 +262,8 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
 
   // ── Desktop: QR code primary, upload secondary ──────────────────────────────
   return (
-    <div className="min-h-screen flex flex-col">
-      <header className="border-b border-border px-6 py-4 flex items-center justify-between">
+    <div className="flex flex-col">
+      <header className="border-b border-border px-5 py-3 flex items-center justify-between">
         <button
           onClick={onBack}
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
@@ -275,22 +275,22 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
         <StepIndicator current={2} />
       </header>
 
-      <main className="flex-1 max-w-md mx-auto w-full px-6 py-10 flex flex-col gap-8 items-center text-center">
+      <main className="max-w-md mx-auto w-full px-6 py-5 flex flex-col gap-5 items-center text-center">
         <div>
-          <h1 className="text-3xl text-primary mb-1">Photograph your room</h1>
+          <h1 className="text-2xl text-primary mb-0.5">Photograph your room</h1>
           <p className="text-sm text-muted-foreground">
-            Use your phone for the best experience — just scan the code below
+            Use your phone — just scan the code below
           </p>
         </div>
 
         {/* ── QR code (primary) ── */}
-        <div className="flex flex-col items-center gap-4">
+        <div className="flex flex-col items-center gap-3">
           {qrDataUrl ? (
             <div className="p-3 rounded-2xl bg-[#1c1c1c] border border-border shadow-lg">
-              <img src={qrDataUrl} alt="Scan to open camera on phone" width={186} height={186} />
+              <img src={qrDataUrl} alt="Scan to open camera on phone" width={248} height={248} />
             </div>
           ) : (
-            <div className="w-[210px] h-[210px] rounded-2xl bg-secondary animate-pulse" />
+            <div className="w-[272px] h-[272px] rounded-2xl bg-secondary animate-pulse" />
           )}
 
           <div className="flex flex-col items-center gap-1">
@@ -305,8 +305,8 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
                   Scan with your phone
                 </p>
                 {isLocalhost ? (
-                  <p className="text-xs text-amber-500 max-w-[220px]">
-                    ⚠️ Restart Vite and open the app via your <strong>network IP</strong> (e.g.{" "}
+                  <p className="text-xs text-amber-500 max-w-[240px]">
+                    ⚠️ Open the app via your <strong>network IP</strong> (e.g.{" "}
                     <code className="font-mono">192.168.x.x:5173</code>) — phones can't reach{" "}
                     <code className="font-mono">localhost</code>
                   </p>
