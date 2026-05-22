@@ -33,6 +33,25 @@ async function toDataUrl(src: string): Promise<string> {
   return `data:${mimeType};base64,${data}`;
 }
 
+/** Stitches two images side-by-side into one JPEG. */
+async function compositeSideBySide(a: string, b: string): Promise<string> {
+  try {
+    const [i1, i2] = await Promise.all([loadImage(a), loadImage(b)]);
+    const h = Math.max(i1.height, i2.height);
+    const canvas = document.createElement("canvas");
+    canvas.width = i1.width + i2.width;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, h);
+    ctx.drawImage(i1, 0, Math.round((h - i1.height) / 2));
+    ctx.drawImage(i2, i1.width, Math.round((h - i2.height) / 2));
+    return canvas.toDataURL("image/jpeg", 0.9);
+  } catch {
+    return a; // fall back to first image
+  }
+}
+
 async function cropToRatio(src: string, targetW: number, targetH: number): Promise<string> {
   try {
     const img = await loadImage(src);
@@ -340,62 +359,39 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Load 2 product reference images (perspective + front view) for accurate design reproduction.
-  const productDataUrls = productImages.length > 0
+  // Build a single composite reference image (perspective + front side-by-side).
+  // This keeps the total at exactly 2 images (room + composite) which is the
+  // only count where Gemini reliably performs the erase+place in one call.
+  const refDataUrls = productImages.length > 0
     ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
     : [];
-  const productResized = await Promise.all(
-    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
+  const refResized = await Promise.all(
+    refDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
   );
+  const compositeRef = refResized.length >= 2
+    ? await compositeSideBySide(refResized[0], refResized[1])
+    : refResized[0] ?? null;
 
-  // ── CALL 1: ERASE ────────────────────────────────────────────────────────────
-  // Single image only — Gemini reliably erases when not distracted by product refs.
-  const erasePrompt =
-    `You are a photo editor. You will receive one image.\n\n` +
-    `CANVAS: A real photograph of a room.\n\n` +
-    `Task: Find and completely erase any ${productLabel.toLowerCase()} or furniture of the same type — ` +
-    `regardless of style, colour, or material, and even if covered or obscured by other objects. ` +
-    `Fill the erased area naturally with the floor and wall visible in the surrounding areas. ` +
-    `Do not change anything else in the room.\n\n` +
-    `Output only the edited photo. No text.`;
-
-  let canvasDataUrl = roomResized;
-  try {
-    const erased = await callGemini([
-      { text: erasePrompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ]);
-    canvasDataUrl = await resizeImage(erased, 1536, 1536, 0.92);
-  } catch {
-    // Fall back to original room if erase fails
-  }
-
-  // ── CALL 2: PLACE ────────────────────────────────────────────────────────────
-  // Uses clean room from Call 1. No erase step needed — just placement.
-  // 2 product reference images for accurate design reproduction.
-  const numRefs = productResized.length;
-  const refLabel = numRefs >= 2 ? "(second and third images)" : "(second image)";
-  const imgWord  = numRefs >= 2 ? "three" : "two";
-
-  const placePrompt =
-    `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
+  const fullPrompt =
+    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: 3D renders showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
-    `Use them only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
+    `${productLabel} REFERENCE (second image): Two 3D renders of the exact ${productLabel.toLowerCase()} shown side-by-side (perspective view on the left, front view on the right).\n` +
+    `Use both views to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
     `Editing instructions:\n` +
-    `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
-    `2. Place it on the floor in the most natural central position.${dimNote}\n` +
-    `3. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
-    `4. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `5. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
+    `1. If there is an existing ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS photo, erase it completely — regardless of its style, colour, or material, and even if it is covered or obscured. Fill the area naturally with the floor and wall behind it.\n` +
+    `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
+    `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
+    `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
+    `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+    `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
-    { text: placePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
-    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+    { text: fullPrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    ...(compositeRef ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(compositeRef) } }] : []),
   ];
 
   const raw = await callGemini(parts);
