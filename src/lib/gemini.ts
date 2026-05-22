@@ -363,11 +363,11 @@ export async function placeInRoom(
   const fullPrompt =
     `You are a photo compositor. You will receive ${numImages} images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
-    `DO NOT alter any room content — walls, floor, ceiling, windows, furniture already present must all stay pixel-perfect.\n\n` +
+    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect. Furniture will be handled by the editing instructions below.\n\n` +
     `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
     `Use it only to copy the ${productLabel.toLowerCase()}'s shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
-    `FRAMING REFERENCE (${numImages === 3 ? "third" : "second"} image): This is the same photo as the CANVAS. It shows the exact camera angle, zoom level, and framing your output must match. The output must look like this image with only the ${productLabel.toLowerCase()} swapped.\n\n` +
+    `FRAMING REFERENCE (${numImages === 3 ? "third" : "second"} image): Same photo as the CANVAS — use it ONLY to lock the camera angle and zoom level. Ignore the furniture in this image; it will be replaced per the editing instructions below.\n\n` +
     `Editing instructions:\n` +
     `1. Find and completely erase any ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS — regardless of its style, colour, or material, and even if it is partially covered or obscured by other objects. Fill the erased area naturally with the floor and wall visible in the surrounding areas.\n` +
     `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
