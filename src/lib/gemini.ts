@@ -340,28 +340,35 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Load and resize product images
+  // Load and resize product images (up to 3)
   const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    ? await Promise.all(productImages.slice(0, 3).map(toDataUrl))
     : [];
   const productResized = await Promise.all(
     productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
   );
 
   // ALL instructions go in ONE text block BEFORE the images — mirrors the working POC structure.
-  // Images follow in order: (1) canvas room, (2) product reference [, (3) second product ref]
-  const numImages = 1 + productResized.length;
-  const refLabel  = numImages === 2
+  // Images follow in order: (1) canvas room, (2) primary ref, [(3) secondary ref], [(4) material close-up]
+  const numImages  = 1 + productResized.length;
+  const imgWord    = numImages === 1 ? "one image" : `${numImages} images`;
+  const refLabel   = productResized.length === 1
     ? "(second image)"
-    : numImages === 3 ? "(second and third images)" : "(next image)";
+    : productResized.length === 2 ? "(second and third images)"
+    : productResized.length >= 3  ? "(second, third, and fourth images)"
+    : "(next image)";
+  const closeupNote = productResized.length >= 3
+    ? `MATERIAL CLOSE-UP (${numImages === 4 ? "fourth" : "last"} image): A close-up photo of the product's surface/material. Use it to accurately reproduce the texture, finish, and colour in the final composite.\n\n`
+    : "";
 
   const fullPrompt =
-    `You are a photo compositor. You will receive ${numImages === 1 ? "one image" : `${numImages} images`} and editing instructions.\n\n` +
+    `You are a photo compositor. You will receive ${imgWord} and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows, furniture already present must all stay pixel-perfect.\n\n` +
     `${productLabel} REFERENCE ${refLabel}: A render or photo showing the exact product to insert.\n` +
     `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
+    closeupNote +
     `Editing instructions:\n` +
     `1. MANDATORY — remove existing furniture of the same category: Scan the entire CANVAS photo for any existing ${productLabel.toLowerCase()} or any furniture of the same type (regardless of its style, colour, size, shape, or material — it does not need to look like the reference). Remove ALL of it completely. Fill every removed area with realistic floor, wall, or ceiling texture that matches the surrounding area seamlessly. Leave absolutely no trace of the old furniture. This step is non-negotiable even if the existing item looks very different from the reference.\n` +
     `2. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +

@@ -66,7 +66,10 @@ export function dbRowToProduct(row: DBProduct): Product {
     id:          row.id,
     name:        row.name,
     description: row.description,
-    images:      [row.image_0 ?? "", row.image_1 ?? ""].filter(Boolean),
+    images:      [row.image_0, row.image_1, row.thumbnail]
+                   .filter((url, i, arr): url is string =>
+                     !!url && url !== "" && arr.indexOf(url) === i,   // deduplicate
+                   ),
     thumbnail:   row.thumbnail ?? "",
     length_cm:   row.length_cm  ?? null,
     width_cm:    row.width_cm   ?? null,

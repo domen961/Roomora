@@ -79,19 +79,18 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
 
   // Proxy-download an extracted image URL and add to photos as data URL
   const handleAddExtractedImage = async (url: string, idx: number) => {
-    if (photos.length >= 2 || addingImageIdx !== null) return;
+    if (photos.length >= 3 || addingImageIdx !== null) return;
     setAddingImageIdx(idx);
     try {
       const proxyRes = await fetch(`/api/scrape?url=${encodeURIComponent(url)}&type=image`);
       if (proxyRes.ok) {
         const { data, mimeType } = await proxyRes.json();
-        setPhotos((prev) => [...prev, `data:${mimeType};base64,${data}`].slice(0, 2));
+        setPhotos((prev) => [...prev, `data:${mimeType};base64,${data}`].slice(0, 3));
       } else {
-        // Fallback: add as URL reference
-        setPhotos((prev) => [...prev, url].slice(0, 2));
+        setPhotos((prev) => [...prev, url].slice(0, 3));
       }
     } catch {
-      setPhotos((prev) => [...prev, url].slice(0, 2));
+      setPhotos((prev) => [...prev, url].slice(0, 3));
     } finally {
       setAddingImageIdx(null);
     }
@@ -99,13 +98,13 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
 
   // ── Photo helpers ───────────────────────────────────────────────────────────
   const addPhotoFiles = (files: File[]) => {
-    const slots = 2 - photos.length;
+    const slots = 3 - photos.length;
     if (slots <= 0) return;
     files.slice(0, slots).forEach((file) => {
       if (!file.type.startsWith("image/")) return;
       const reader = new FileReader();
       reader.onload = (e) => {
-        setPhotos((prev) => [...prev, e.target?.result as string].slice(0, 2));
+        setPhotos((prev) => [...prev, e.target?.result as string].slice(0, 3));
       };
       reader.readAsDataURL(file);
     });
@@ -161,7 +160,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
       const finalImages = [
         photos[0] ?? s[0],
         photos[1] ?? s[1] ?? photos[0] ?? s[0],
-        photos[0] ?? s[2],
+        photos[2] ?? s[2] ?? photos[0] ?? s[0],
       ].filter(Boolean) as string[];
 
       const dims = {
@@ -247,7 +246,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
         {extractedImages.length > 0 && (
           <div className="flex flex-col gap-2 mt-1">
             <p className="text-xs text-muted-foreground">
-              {extractedImages.length} photos found — click to add ({photos.length}/2 selected):
+              {extractedImages.length} photos found — click to add ({photos.length}/3 selected):
             </p>
             <div className="flex flex-wrap gap-2">
               {extractedImages.map((url, i) => {
@@ -257,13 +256,13 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
                   <button
                     key={i}
                     onClick={() => !isSelected && handleAddExtractedImage(url, i)}
-                    disabled={isSelected || (photos.length >= 2 && !isSelected) || addingImageIdx !== null}
+                    disabled={isSelected || (photos.length >= 3 && !isSelected) || addingImageIdx !== null}
                     title={isSelected ? "Already added" : "Click to add"}
                     className={cn(
                       "relative rounded-md overflow-hidden border-2 transition-all",
                       isSelected
                         ? "border-primary/70 opacity-50 cursor-default"
-                        : photos.length >= 2
+                        : photos.length >= 3
                           ? "border-border opacity-30 cursor-not-allowed"
                           : "border-border hover:border-primary/60 cursor-pointer",
                     )}
@@ -279,7 +278,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
                         <Loader2 className="h-4 w-4 animate-spin text-primary" />
                       </div>
                     )}
-                    {!isSelected && addingImageIdx !== i && photos.length < 2 && (
+                    {!isSelected && addingImageIdx !== i && photos.length < 3 && (
                       <div className="absolute inset-0 bg-primary/10 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
                         <Plus className="h-5 w-5 text-primary" />
                       </div>
@@ -356,7 +355,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
             Product photos
           </label>
           <span className="text-xs text-muted-foreground/60">
-            {photos.length}/2 — perspective + front view recommended
+            {photos.length}/3 — perspective · front · material close-up
           </span>
         </div>
 
@@ -370,7 +369,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
                   className="h-24 w-24 rounded-md object-cover border border-border"
                 />
                 <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1.5 py-0.5 rounded">
-                  {i === 0 ? "Primary" : "Secondary"}
+                  {i === 0 ? "Primary" : i === 1 ? "Secondary" : "Close-up"}
                 </span>
                 <button
                   onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
@@ -380,7 +379,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
                 </button>
               </div>
             ))}
-            {photos.length < 2 && (
+            {photos.length < 3 && (
               <button
                 onClick={() => photoInputRef.current?.click()}
                 className="h-24 w-24 rounded-md border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors"
@@ -406,7 +405,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
             <ImagePlus className="h-8 w-8 text-muted-foreground" />
             <div className="text-center">
               <p className="text-sm font-medium">Drop product photos here</p>
-              <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WEBP — up to 2 images</p>
+              <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WEBP — up to 3 images</p>
             </div>
           </div>
         )}
