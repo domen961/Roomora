@@ -362,20 +362,18 @@ export async function placeInRoom(
     : "";
 
   const fullPrompt =
-    `You are a photo compositor performing a surgical edit. You will receive ${imgWord}.\n\n` +
-    `CANVAS (first image): A real photograph of a room. This is the base image you must edit.\n` +
-    `BACKGROUND LOCK — The background is completely frozen. Every wall surface, floor plank, ceiling, window, architectural feature, and room geometry must remain pixel-perfect from the CANVAS. Do NOT redraw, regenerate, reinterpret, or alter them in any way. The camera angle, perspective, and framing are also locked — do not change them.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: A render or photo of the exact product to insert.\n` +
-    `Use it only to copy the product's shape, colour, material, and proportions.\n` +
+    `You are a photo compositor. You will receive ${imgWord} and editing instructions.\n\n` +
+    `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
+    `DO NOT change the walls, floor, ceiling, windows, architectural features, lighting, or atmosphere. Preserve everything about the room.\n\n` +
+    `${productLabel} REFERENCE ${refLabel}: A render or photo showing the exact product to insert.\n` +
+    `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
     closeupNote +
     `Editing instructions:\n` +
-    `1. MANDATORY — remove existing furniture of the same category: Find any existing ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS (regardless of style, colour, size, or material). Remove ALL of it completely. Fill the removed area by cloning the surrounding floor/wall pixels from the CANVAS — do not generate new texture, copy it directly from nearby areas of the same CANVAS photo.\n` +
-    `2. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +
-    `3. Place it on the floor in the most natural position, or exactly where the old one was.${dimNote}\n` +
-    `4. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
-    `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `6. FRAMING LOCK: The output image must be pixel-for-pixel identical to the CANVAS in all areas outside the furniture footprint — same crop, same perspective, same camera angle, same room geometry. Do not zoom, pan, tilt, or reframe in any way.\n\n` +
+    `1. Replace any existing ${productLabel.toLowerCase()} in the CANVAS with the ${productLabel} shown in the REFERENCE. If there is no existing ${productLabel.toLowerCase()}, place it on the floor in the most natural central position.${dimNote}\n` +
+    `2. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
+    `3. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+    `4. The output image must match the CANVAS in framing, crop, and orientation — same camera angle, same perspective, same room geometry. Do not zoom, pan, or reframe.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
