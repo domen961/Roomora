@@ -187,7 +187,7 @@ export default function CapturePage() {
         <Loader2 className="h-14 w-14 animate-spin text-primary" />
         <div>
           <p className="text-base font-medium text-foreground">
-            {phase === "sending" ? "Sending photo…" : "Generating your room…"}
+            {phase === "sending" ? "Sending photo…" : "Placing the product in your room…"}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
             {phase === "sending" ? "Uploading to server" : "Usually 30–60 seconds"}

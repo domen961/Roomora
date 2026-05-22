@@ -162,7 +162,7 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-5 text-foreground px-6 text-center">
         <Loader2 className="h-10 w-10 animate-spin text-primary" />
         <div>
-          <p className="font-serif text-2xl mb-1">Placing in your room…</p>
+          <p className="font-serif text-2xl mb-1">Placing the product in your room…</p>
           <p className="text-xs uppercase tracking-widest opacity-50">Usually 30–60 seconds</p>
         </div>
       </div>
