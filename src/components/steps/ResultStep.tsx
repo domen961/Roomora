@@ -8,6 +8,11 @@ interface Props {
   onReset: () => void;
 }
 
+const isMobile =
+  typeof navigator !== "undefined" &&
+  (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 export default function ResultStep({ result, productName, onReset }: Props) {
   const handleDownload = () => {
     const a = document.createElement("a");
@@ -16,6 +21,34 @@ export default function ResultStep({ result, productName, onReset }: Props) {
     a.click();
   };
 
+  // ── Mobile: full-screen overlay (matches CapturePage result) ────────────────
+  if (isMobile) {
+    return (
+      <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
+        <img src={result} alt={`${productName} placed in room`}
+          className="absolute inset-0 w-full h-full object-contain" />
+        <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+        <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none">
+          <Logo />
+        </div>
+        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
+          <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
+          <div className="flex gap-3 w-full max-w-xs">
+            <button onClick={onReset}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
+              <RotateCcw className="h-4 w-4" />Retry
+            </button>
+            <button onClick={handleDownload}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
+              <Download className="h-4 w-4" />Download
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop: structured layout ──────────────────────────────────────────────
   return (
     <div className="flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
