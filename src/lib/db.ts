@@ -7,11 +7,24 @@ async function uploadSnapshot(
   merchantId: string,
   productId: string,
   angle: string,
-  dataUrl: string,
+  imageSource: string,     // data URL  OR  http(s) URL
 ): Promise<string> {
-  // Convert base64 data URL to Blob
-  const res  = await fetch(dataUrl);
-  const blob = await res.blob();
+  let blob: Blob;
+
+  if (imageSource.startsWith("data:")) {
+    // Data URL — fetch() handles these natively
+    const res = await fetch(imageSource);
+    blob = await res.blob();
+  } else {
+    // External HTTP URL — proxy through /api/scrape to bypass CORS
+    const proxyRes = await fetch(
+      `/api/scrape?url=${encodeURIComponent(imageSource)}&type=image`,
+    );
+    if (!proxyRes.ok) throw new Error("Image proxy download failed");
+    const { data, mimeType } = await proxyRes.json();
+    const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+    blob = new Blob([bytes], { type: mimeType ?? "image/jpeg" });
+  }
 
   const path = `${merchantId}/${productId}/${angle}.jpg`;
 
@@ -28,28 +41,40 @@ async function uploadSnapshot(
 // ── Product CRUD ───────────────────────────────────────────────────────────────
 
 export interface DBProduct {
-  id: string;
+  id:          string;
   merchant_id: string;
-  name: string;
+  name:        string;
   description: string;
-  image_0: string | null;
-  image_1: string | null;
-  thumbnail: string | null;
-  created_at: string;
+  image_0:     string | null;
+  image_1:     string | null;
+  thumbnail:   string | null;
+  length_cm:   number | null;
+  width_cm:    number | null;
+  height_cm:   number | null;
+  created_at:  string;
+}
+
+export interface ProductDimensions {
+  length_cm?: number | null;
+  width_cm?:  number | null;
+  height_cm?: number | null;
 }
 
 /** Convert a DB row to the Product shape used by the app */
 export function dbRowToProduct(row: DBProduct): Product {
   return {
-    id: row.id,
-    name: row.name,
+    id:          row.id,
+    name:        row.name,
     description: row.description,
-    images: [row.image_0 ?? "", row.image_1 ?? ""].filter(Boolean),
-    thumbnail: row.thumbnail ?? "",
+    images:      [row.image_0 ?? "", row.image_1 ?? ""].filter(Boolean),
+    thumbnail:   row.thumbnail ?? "",
+    length_cm:   row.length_cm  ?? null,
+    width_cm:    row.width_cm   ?? null,
+    height_cm:   row.height_cm  ?? null,
   };
 }
 
-/** Fetch all products for a merchant (or all products for superadmin) */
+/** Fetch all products for a merchant */
 export async function getProducts(merchantId: string): Promise<Product[]> {
   const { data, error } = await supabase
     .from("products")
@@ -61,18 +86,19 @@ export async function getProducts(merchantId: string): Promise<Product[]> {
   return (data as DBProduct[]).map(dbRowToProduct);
 }
 
-/** Save a new product — uploads snapshots to Storage first, then inserts row */
+/** Save a new product — uploads images to Storage, then inserts DB row */
 export async function saveProduct(
-  merchantId: string,
-  id: string,
-  name: string,
+  merchantId:  string,
+  id:          string,
+  name:        string,
   description: string,
-  snapshots: string[], // [perspective, front, side]
+  images:      string[],         // [image_0, image_1, thumbnail] — data URLs or http URLs
+  dimensions?: ProductDimensions,
 ): Promise<void> {
   const [url0, url1, urlThumb] = await Promise.all([
-    uploadSnapshot(merchantId, id, "perspective", snapshots[0]),
-    uploadSnapshot(merchantId, id, "front",       snapshots[1]),
-    uploadSnapshot(merchantId, id, "side",         snapshots[2]),
+    uploadSnapshot(merchantId, id, "perspective", images[0]),
+    uploadSnapshot(merchantId, id, "front",       images[1] ?? images[0]),
+    uploadSnapshot(merchantId, id, "side",        images[2] ?? images[0]),
   ]);
 
   const { error } = await supabase.from("products").insert({
@@ -83,6 +109,9 @@ export async function saveProduct(
     image_0:   url0,
     image_1:   url1,
     thumbnail: urlThumb,
+    length_cm: dimensions?.length_cm ?? null,
+    width_cm:  dimensions?.width_cm  ?? null,
+    height_cm: dimensions?.height_cm ?? null,
   });
 
   if (error) throw new Error(error.message);
@@ -91,7 +120,7 @@ export async function saveProduct(
 /** Delete a product and its storage files */
 export async function deleteProduct(
   merchantId: string,
-  productId: string,
+  productId:  string,
 ): Promise<void> {
   await supabase.storage.from("product-images").remove([
     `${merchantId}/${productId}/perspective.jpg`,
@@ -108,7 +137,7 @@ export async function deleteProduct(
   if (error) throw new Error(error.message);
 }
 
-/** Fetch all merchants — only works for superadmin (RLS) */
+/** Fetch all merchants — superadmin only (RLS enforced) */
 export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null }[]> {
   const { data, error } = await supabase
     .from("merchants")

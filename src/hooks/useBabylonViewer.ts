@@ -27,10 +27,23 @@ export function useBabylonViewer(
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const engine = new BABYLON.Engine(canvas, true, {
-      preserveDrawingBuffer: true,
-      stencil: true,
-    });
+    // Test WebGL availability before Babylon initialises
+    const testCtx = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+    if (!testCtx) {
+      console.warn("WebGL not available — 3D model processing will be disabled.");
+      return;
+    }
+
+    let engine: BABYLON.Engine;
+    try {
+      engine = new BABYLON.Engine(canvas, true, {
+        preserveDrawingBuffer: true,
+        stencil: true,
+      });
+    } catch (e) {
+      console.warn("Babylon engine failed to initialise:", e);
+      return;
+    }
 
     const scene = new BABYLON.Scene(engine);
     scene.clearColor = new BABYLON.Color4(0.09, 0.09, 0.09, 1);
@@ -64,7 +77,8 @@ export function useBabylonViewer(
       sceneRef.current  = null;
       setIsReady(false);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const processModel = useCallback(async (file: File): Promise<string[]> => {
     const scene = sceneRef.current;
