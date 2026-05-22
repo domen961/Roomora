@@ -1,4 +1,4 @@
-const GEMINI_MODEL       = "gemini-2.0-flash-preview-image-generation";
+const GEMINI_MODEL       = "gemini-2.5-flash-image";
 const GEMINI_TEXT_MODEL = "gemini-2.5-flash";
 
 function getEndpoint() {
