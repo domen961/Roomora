@@ -12,7 +12,7 @@ export default function CatalogGrid({ products, onDelete }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyId = (id: string) => {
-    navigator.clipboard.writeText(id);
+    navigator.clipboard.writeText(`<button data-roomora-product="${id}">See in your room</button>`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };

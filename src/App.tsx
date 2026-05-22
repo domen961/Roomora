@@ -3,6 +3,7 @@ import AdminPage from "@/components/admin/AdminPage";
 import LoginPage from "@/pages/LoginPage";
 import TryPage from "@/pages/TryPage";
 import LandingPage from "@/pages/LandingPage";
+import CapturePage from "@/pages/CapturePage";
 
 export default function App() {
   return (
@@ -12,6 +13,7 @@ export default function App() {
         <Route path="/login"                  element={<LoginPage />} />
         <Route path="/admin/*"                element={<AdminPage />} />
         <Route path="/try/:shopId/:productId" element={<TryPage />} />
+        <Route path="/capture/:token"         element={<CapturePage />} />
       </Routes>
     </div>
   );

@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, Camera, ImageIcon, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowLeft, Camera, Check, ImageIcon, Loader2, Smartphone } from "lucide-react";
+import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { placeInRoom } from "@/lib/gemini";
+import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
 interface Props {
@@ -26,6 +28,51 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [cameraReady, setCameraReady] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // QR / phone capture state (desktop only)
+  const token = useMemo(() => crypto.randomUUID(), []);
+  const [qrDataUrl, setQrDataUrl] = useState("");
+  const [phoneStatus, setPhoneStatus] = useState<"waiting" | "received">("waiting");
+
+  const captureUrl = useMemo(() => `${window.location.origin}/capture/${token}`, [token]);
+  const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
+  // Generate QR code (amber on dark, on-brand)
+  useEffect(() => {
+    if (isMobile) return;
+    QRCode.toDataURL(captureUrl, {
+      width: 200,
+      margin: 2,
+      color: { dark: "#F59E0B", light: "#1c1c1c" },
+    })
+      .then(setQrDataUrl)
+      .catch(console.error);
+  }, [captureUrl]);
+
+  // Subscribe to Supabase Realtime for phone photo
+  useEffect(() => {
+    if (isMobile) return;
+    const channel = supabase
+      .channel("room_captures:" + token)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "room_captures",
+          filter: `token=eq.${token}`,
+        },
+        (payload) => {
+          setPhoneStatus("received");
+          const photo = (payload.new as { photo: string }).photo;
+          // Clean up the row
+          supabase.from("room_captures").delete().eq("token", token).then(() => {});
+          processRoomPhoto(photo);
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Start camera on mobile
   useEffect(() => {
@@ -186,7 +233,7 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
     );
   }
 
-  // ── Desktop: upload ─────────────────────────────────────────────────────────
+  // ── Desktop: QR code primary, upload secondary ──────────────────────────────
   return (
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
@@ -201,35 +248,74 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
         <StepIndicator current={2} />
       </header>
 
-      <main className="flex-1 max-w-lg mx-auto w-full px-4 py-12 flex flex-col gap-8 items-center text-center">
+      <main className="flex-1 max-w-md mx-auto w-full px-6 py-10 flex flex-col gap-8 items-center text-center">
         <div>
           <h1 className="text-3xl text-primary mb-1">Photograph your room</h1>
           <p className="text-sm text-muted-foreground">
-            Upload a photo of the room where you'd like to place <strong>{product.name}</strong>.
+            Use your phone for the best experience — just scan the code below
           </p>
         </div>
 
+        {/* ── QR code (primary) ── */}
+        <div className="flex flex-col items-center gap-4">
+          {qrDataUrl ? (
+            <div className="p-3 rounded-2xl bg-[#1c1c1c] border border-border shadow-lg">
+              <img src={qrDataUrl} alt="Scan to open camera on phone" width={186} height={186} />
+            </div>
+          ) : (
+            <div className="w-[210px] h-[210px] rounded-2xl bg-secondary animate-pulse" />
+          )}
+
+          <div className="flex flex-col items-center gap-2">
+            {phoneStatus === "received" ? (
+              <p className="text-sm text-primary flex items-center gap-1.5 font-medium">
+                <Check className="h-4 w-4" /> Photo received — processing…
+              </p>
+            ) : (
+              <>
+                <p className="text-sm font-medium flex items-center gap-1.5">
+                  <Smartphone className="h-4 w-4 text-primary" />
+                  Scan with your phone
+                </p>
+                {isLocalhost ? (
+                  <p className="text-xs text-amber-500 max-w-[220px]">
+                    ⚠️ Restart Vite and open the app via your <strong>network IP</strong> (e.g.{" "}
+                    <code className="font-mono">192.168.x.x:5173</code>) — phones can't reach{" "}
+                    <code className="font-mono">localhost</code>
+                  </p>
+                ) : (
+                  <p className="text-xs text-muted-foreground">Opens the camera directly on your device</p>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* ── Divider ── */}
+        <div className="flex items-center gap-3 w-full">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground">or upload from this device</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        {/* ── File upload (secondary) ── */}
         <button
           onClick={() => fileInputRef.current?.click()}
           className={cn(
-            "w-full rounded-xl border-2 border-dashed border-border hover:border-primary/40",
-            "p-12 flex flex-col items-center gap-4 cursor-pointer transition-colors group"
+            "w-full flex items-center gap-3 rounded-lg border border-border hover:border-primary/40",
+            "px-4 py-3 cursor-pointer transition-colors group text-left"
           )}
         >
-          <div className="w-14 h-14 rounded-full bg-secondary flex items-center justify-center group-hover:bg-primary/10 transition-colors">
-            <Camera className="h-7 w-7 text-muted-foreground group-hover:text-primary transition-colors" />
+          <div className="w-8 h-8 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10 transition-colors">
+            <ImageIcon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
           </div>
           <div>
             <p className="text-sm font-medium text-foreground">Upload a room photo</p>
-            <p className="text-xs text-muted-foreground mt-1">JPG or PNG — natural lighting works best</p>
+            <p className="text-xs text-muted-foreground">JPG or PNG — natural lighting works best</p>
           </div>
         </button>
 
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleGallery} />
-
-        <p className="text-xs text-muted-foreground">
-          On mobile? Open Roomora on your phone for live camera capture.
-        </p>
       </main>
     </div>
   );
