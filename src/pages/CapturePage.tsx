@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { Camera, Check, ImageIcon, Loader2, AlertCircle, RotateCcw } from "lucide-react";
+import { Camera, Download, ImageIcon, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getProducts } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
@@ -198,9 +198,15 @@ export default function CapturePage() {
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
               <RotateCcw className="h-4 w-4" />Retry
             </button>
-            <button onClick={() => setPhase("idle")}
+            <button
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = resultImage;
+                a.download = `roomora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
+                a.click();
+              }}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
-              <Check className="h-4 w-4" />Done
+              <Download className="h-4 w-4" />Download
             </button>
           </div>
         </div>
