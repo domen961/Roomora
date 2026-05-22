@@ -57,17 +57,18 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",  // catch both INSERT (first shot) and UPDATE (retry)
           schema: "public",
           table: "room_captures",
           filter: `token=eq.${token}`,
         },
         (payload) => {
-          setPhoneStatus("received");
-          const photo = (payload.new as { photo: string }).photo;
-          // Clean up the row
-          supabase.from("room_captures").delete().eq("token", token).then(() => {});
-          processRoomPhoto(photo);
+          const row = payload.new as { photo: string; result: string | null };
+          // Only process when there's a new photo and no result yet
+          if (row.photo && !row.result) {
+            setPhoneStatus("received");
+            processRoomPhoto(row.photo, token);
+          }
         }
       )
       .subscribe();
@@ -100,10 +101,27 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const processRoomPhoto = useCallback(
-    async (roomPhoto: string) => {
+    async (roomPhoto: string, captureToken?: string) => {
       setPhase("processing");
       try {
         const result = await placeInRoom(product.images, roomPhoto, product.description);
+
+        // Save compressed result back to room_captures so phone can display it
+        if (captureToken) {
+          compressDataUrl(result, 700, 0.70).then((compressed) => {
+            supabase
+              .from("room_captures")
+              .update({ result: compressed })
+              .eq("token", captureToken)
+              .then(() => {
+                // Auto-clean after 15 minutes
+                setTimeout(() => {
+                  supabase.from("room_captures").delete().eq("token", captureToken).then(() => {});
+                }, 900_000);
+              });
+          });
+        }
+
         onResult(result);
       } catch (err) {
         setErrorMsg(err instanceof Error ? err.message : String(err));
@@ -266,7 +284,7 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
             <div className="w-[210px] h-[210px] rounded-2xl bg-secondary animate-pulse" />
           )}
 
-          <div className="flex flex-col items-center gap-2">
+          <div className="flex flex-col items-center gap-1">
             {phoneStatus === "received" ? (
               <p className="text-sm text-primary flex items-center gap-1.5 font-medium">
                 <Check className="h-4 w-4" /> Photo received — processing…
@@ -335,4 +353,21 @@ function StepIndicator({ current }: { current: number }) {
       ))}
     </div>
   );
+}
+
+/** Compress a data URL to max dimensions for mobile transfer */
+function compressDataUrl(dataUrl: string, maxPx: number, quality: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
 }
