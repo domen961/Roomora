@@ -186,7 +186,7 @@ export default function CapturePage() {
     return (
       <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
         <img src={resultImage} alt="Your room with the furniture"
-          className="absolute inset-0 w-full h-full object-cover" />
+          className="absolute inset-0 w-full h-full object-contain" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
         <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none">
           <Logo />
