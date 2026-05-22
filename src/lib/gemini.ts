@@ -369,7 +369,7 @@ export async function placeInRoom(
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
     `FRAMING REFERENCE (${numImages === 3 ? "third" : "second"} image): This is the same photo as the CANVAS. It shows the exact camera angle, zoom level, and framing your output must match. The output must look like this image with only the ${productLabel.toLowerCase()} swapped.\n\n` +
     `Editing instructions:\n` +
-    `1. If there is an existing ${productLabel.toLowerCase()} in the CANVAS photo, erase it and fill the area naturally with the floor/wall behind it.\n` +
+    `1. Find and completely erase any sofa, couch, sectional, or upholstered seating in the CANVAS — including any blankets, pillows, covers, or objects resting on top of it. Fill the erased area naturally with the floor and wall visible in the surrounding areas.\n` +
     `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
     `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
