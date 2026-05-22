@@ -4,14 +4,12 @@ import { cn } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 
 interface Props {
-  products:    Product[];
-  onDelete:    (id: string) => void;
-  onEdit:      (product: Product) => void;
-  onSelect?:   (product: Product) => void;
-  selectedId?: string;
+  products: Product[];
+  onDelete: (id: string) => void;
+  onEdit:   (product: Product) => void;
 }
 
-export default function CatalogGrid({ products, onDelete, onEdit, onSelect, selectedId }: Props) {
+export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyId = (id: string) => {
@@ -31,18 +29,11 @@ export default function CatalogGrid({ products, onDelete, onEdit, onSelect, sele
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
       {products.map((product) => {
-        const isOwned = !product.id.startsWith("sharon_"); // rough check — TC Meble products are read-only
+        const isOwned = !product.id.startsWith("sharon_");
         return (
           <div
             key={product.id}
-            onClick={() => onSelect?.(product)}
-            className={cn(
-              "rounded-lg border bg-card overflow-hidden flex flex-col transition-all",
-              onSelect && "cursor-pointer",
-              selectedId === product.id
-                ? "border-primary ring-1 ring-primary/20"
-                : "border-border hover:border-primary/40"
-            )}
+            className="rounded-lg border border-border bg-card overflow-hidden flex flex-col"
           >
             {/* Thumbnail */}
             <div className="aspect-[4/3] bg-secondary flex items-center justify-center overflow-hidden">
@@ -58,12 +49,13 @@ export default function CatalogGrid({ products, onDelete, onEdit, onSelect, sele
               )}
             </div>
 
+            {/* Card footer */}
             <div className="p-2.5 flex flex-col gap-2 flex-1">
               <p className="text-xs font-medium leading-tight">{product.name}</p>
               <div className="flex gap-1.5 mt-auto">
                 <button
-                  onClick={(e) => { e.stopPropagation(); copyId(product.id); }}
-                  title="Copy product ID for embed"
+                  onClick={() => copyId(product.id)}
+                  title="Copy embed snippet"
                   className={cn(
                     "flex-1 flex items-center justify-center gap-1 rounded text-xs px-2 py-1 transition-colors border",
                     copiedId === product.id
@@ -72,21 +64,22 @@ export default function CatalogGrid({ products, onDelete, onEdit, onSelect, sele
                   )}
                 >
                   {copiedId === product.id
-                    ? <><Check className="h-3 w-3" /> Copied</>
-                    : <><Copy className="h-3 w-3" /> ID</>
+                    ? <><Check className="h-3 w-3" />Copied</>
+                    : <><Copy className="h-3 w-3" />ID</>
                   }
                 </button>
+
                 {isOwned && (
                   <>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onEdit(product); }}
+                      onClick={() => onEdit(product)}
                       title="Edit product"
                       className="flex items-center justify-center rounded border border-border hover:border-primary/50 hover:text-primary px-2 py-1 text-muted-foreground transition-colors"
                     >
                       <Pencil className="h-3 w-3" />
                     </button>
                     <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(product.id); }}
+                      onClick={() => onDelete(product.id)}
                       title="Delete product"
                       className="flex items-center justify-center rounded border border-border hover:border-destructive/50 hover:text-destructive px-2 py-1 text-muted-foreground transition-colors"
                     >
