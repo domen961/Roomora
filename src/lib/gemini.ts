@@ -340,32 +340,27 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Load and resize the PRIMARY product image only — matching the POC "two images" structure.
-  // Sending multiple renders was found to confuse Gemini and cause room regeneration.
-  const primaryDataUrl = productImages.length > 0
-    ? await toDataUrl(productImages[0])
-    : null;
-  const primaryResized = primaryDataUrl
-    ? await resizeImage(primaryDataUrl, 1024, 1024, 0.92)
-    : null;
+  // Load up to 2 product reference images (perspective + front view).
+  // 1 image wasn't enough detail; 3+ caused room regeneration.
+  const productDataUrls = productImages.length > 0
+    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    : [];
+  const productResized = await Promise.all(
+    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
+  );
 
-  // Single call — exact POC prompt structure that was verified to preserve the room.
-  // Key elements vs previous attempts:
-  //   • "furniture already present must all stay pixel-perfect" in CANVAS block
-  //   • "3D render" explicit in REFERENCE block
-  //   • Conditional erase ("If there is an existing…") not mandatory
-  //   • "or where the old [product] was" placement hint
-  //   • Only TWO images total (room + one reference)
-  // Two images only — matching the POC structure that was verified to work.
-  // The framing reference (3rd image = room again) was causing Gemini to treat
-  // the room-with-old-furniture as the desired output, blocking the erase step.
+  const numRefImages = productResized.length;
+  const refLabel = numRefImages >= 2 ? "(second and third images)" : "(second image)";
+  const totalImages = 1 + numRefImages;
+  const imgWord = totalImages === 2 ? "two" : "three";
+
   const fullPrompt =
-    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
+    `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
-    `Use it only to copy the ${productLabel.toLowerCase()}'s shape, colour, material detail, and proportions.\n` +
-    `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
+    `${productLabel} REFERENCE ${refLabel}: 3D renders showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
+    `Use them only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
+    `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
     `Editing instructions:\n` +
     `1. If there is an existing ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS photo, erase it completely — regardless of its style, colour, or material, and even if it is covered or obscured. Fill the area naturally with the floor and wall behind it.\n` +
     `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
@@ -378,7 +373,7 @@ export async function placeInRoom(
   const parts: unknown[] = [
     { text: fullPrompt },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
+    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
   ];
 
   const raw = await callGemini(parts);
