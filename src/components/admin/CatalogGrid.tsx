@@ -35,8 +35,15 @@ export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
             key={product.id}
             className="rounded-lg border border-border bg-card overflow-hidden flex flex-col"
           >
-            {/* Thumbnail */}
-            <div className="aspect-[4/3] bg-secondary flex items-center justify-center overflow-hidden">
+            {/* Thumbnail — click to edit */}
+            <button
+              onClick={() => isOwned ? onEdit(product) : undefined}
+              disabled={!isOwned}
+              className={cn(
+                "aspect-[4/3] bg-secondary flex items-center justify-center overflow-hidden relative group",
+                isOwned && "cursor-pointer"
+              )}
+            >
               {product.thumbnail ? (
                 <img
                   src={product.thumbnail}
@@ -47,7 +54,14 @@ export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
               ) : (
                 <span className="text-xs text-muted-foreground px-2 text-center">{product.name}</span>
               )}
-            </div>
+              {isOwned && (
+                <div className="absolute inset-0 bg-amber-500/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <div className="bg-amber-500 rounded-full p-2 shadow-lg">
+                    <Pencil className="h-4 w-4 text-black" />
+                  </div>
+                </div>
+              )}
+            </button>
 
             {/* Card footer */}
             <div className="p-2.5 flex flex-col gap-2 flex-1">
@@ -70,22 +84,13 @@ export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
                 </button>
 
                 {isOwned && (
-                  <>
-                    <button
-                      onClick={() => onEdit(product)}
-                      title="Edit product"
-                      className="flex items-center justify-center rounded border border-border hover:border-primary/50 hover:text-primary px-2 py-1 text-muted-foreground transition-colors"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
-                    <button
-                      onClick={() => onDelete(product.id)}
-                      title="Delete product"
-                      className="flex items-center justify-center rounded border border-border hover:border-destructive/50 hover:text-destructive px-2 py-1 text-muted-foreground transition-colors"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </button>
-                  </>
+                  <button
+                    onClick={() => onDelete(product.id)}
+                    title="Delete product"
+                    className="flex items-center justify-center rounded border border-border hover:border-destructive/50 hover:text-destructive px-2 py-1 text-muted-foreground transition-colors"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </button>
                 )}
               </div>
             </div>
