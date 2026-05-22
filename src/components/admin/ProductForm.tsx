@@ -6,25 +6,29 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { BabylonViewer } from "@/hooks/useBabylonViewer";
-import { saveProduct } from "@/lib/db";
+import { saveProduct, updateProduct } from "@/lib/db";
+import type { Product } from "@/lib/products";
 import { extractProductData } from "@/lib/gemini";
 
 interface Props {
-  viewer:     BabylonViewer;
-  merchantId: string;
-  onSave:     () => void;
-  onCancel:   () => void;
+  viewer:          BabylonViewer;
+  merchantId:      string;
+  initialProduct?: Product;   // when provided, form is in edit mode
+  onSave:          () => void;
+  onCancel:        () => void;
 }
 
 type Phase3D = "idle" | "processing" | "ready" | "error";
 
-export default function ProductForm({ viewer, merchantId, onSave, onCancel }: Props) {
-  // Core fields
-  const [name,        setName]        = useState("");
-  const [description, setDescription] = useState("");
-  const [lengthCm,    setLengthCm]    = useState("");
-  const [widthCm,     setWidthCm]     = useState("");
-  const [heightCm,    setHeightCm]    = useState("");
+export default function ProductForm({ viewer, merchantId, initialProduct, onSave, onCancel }: Props) {
+  const isEditing = !!initialProduct;
+
+  // Core fields — pre-filled from initialProduct when editing
+  const [name,        setName]        = useState(initialProduct?.name        ?? "");
+  const [description, setDescription] = useState(initialProduct?.description ?? "");
+  const [lengthCm,    setLengthCm]    = useState(initialProduct?.length_cm   != null ? String(initialProduct.length_cm) : "");
+  const [widthCm,     setWidthCm]     = useState(initialProduct?.width_cm    != null ? String(initialProduct.width_cm)  : "");
+  const [heightCm,    setHeightCm]    = useState(initialProduct?.height_cm   != null ? String(initialProduct.height_cm) : "");
 
   // URL import
   const [importUrl,       setImportUrl]       = useState("");
@@ -33,8 +37,8 @@ export default function ProductForm({ viewer, merchantId, onSave, onCancel }: Pr
   const [extractedImages, setExtractedImages] = useState<string[]>([]);
   const [addingImageIdx,  setAddingImageIdx]  = useState<number | null>(null);
 
-  // Photos (primary)
-  const [photos,    setPhotos]    = useState<string[]>([]);
+  // Photos (primary) — pre-filled with existing Supabase URLs when editing
+  const [photos,    setPhotos]    = useState<string[]>(initialProduct?.images.filter(Boolean) ?? []);
   const [photoDrag, setPhotoDrag] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
@@ -151,15 +155,7 @@ export default function ProductForm({ viewer, merchantId, onSave, onCancel }: Pr
     setSaving(true);
     setSaveError("");
     try {
-      const slug = name.trim().toLowerCase()
-        .replace(/[ąà]/g, "a").replace(/ć/g, "c").replace(/[ęè]/g, "e")
-        .replace(/ł/g, "l").replace(/ń/g, "n").replace(/[óò]/g, "o")
-        .replace(/ś/g, "s").replace(/[źż]/g, "z")
-        .normalize("NFD").replace(/[̀-ͯ]/g, "")  // strip remaining diacritics
-        .replace(/[^a-z0-9]+/g, "_")
-        .replace(/^_+|_+$/g, "");
-      const id = `${slug}_${Date.now()}`;
-      const s    = snapshots3DRef.current;
+      const s = snapshots3DRef.current;
 
       // Photos always win over 3D snapshots
       const finalImages = [
@@ -174,13 +170,34 @@ export default function ProductForm({ viewer, merchantId, onSave, onCancel }: Pr
         height_cm: heightCm ? parseFloat(heightCm) : null,
       };
 
-      await saveProduct(
-        merchantId, id,
-        name.trim(),
-        description.trim() || name.trim(),
-        finalImages,
-        dims,
-      );
+      if (isEditing && initialProduct) {
+        // Update — keeps the same product ID
+        await updateProduct(
+          merchantId,
+          initialProduct.id,
+          name.trim(),
+          description.trim() || name.trim(),
+          finalImages,
+          dims,
+        );
+      } else {
+        // Create — generate a new ID from name slug + timestamp
+        const slug = name.trim().toLowerCase()
+          .replace(/[ąà]/g, "a").replace(/ć/g, "c").replace(/[ęè]/g, "e")
+          .replace(/ł/g, "l").replace(/ń/g, "n").replace(/[óò]/g, "o")
+          .replace(/ś/g, "s").replace(/[źż]/g, "z")
+          .normalize("NFD").replace(/[̀-ͯ]/g, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+        const id = `${slug}_${Date.now()}`;
+        await saveProduct(
+          merchantId, id,
+          name.trim(),
+          description.trim() || name.trim(),
+          finalImages,
+          dims,
+        );
+      }
       onSave();
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : String(err));
@@ -492,7 +509,7 @@ export default function ProductForm({ viewer, merchantId, onSave, onCancel }: Pr
           className="flex-1 gap-2"
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving ? "Saving…" : "Save product"}
+          {saving ? "Saving…" : isEditing ? "Update product" : "Save product"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={isBusy}>
           Cancel

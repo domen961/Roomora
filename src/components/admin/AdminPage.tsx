@@ -29,6 +29,7 @@ export default function AdminPage() {
 
   const [tab,              setTab]              = useState<Tab>("catalog");
   const [showForm,         setShowForm]         = useState(false);
+  const [editingProduct,   setEditingProduct]   = useState<Product | null>(null);
   const [products,         setProducts]         = useState<Product[]>([]);
   const [productsLoading,  setProductsLoading]  = useState(true);
   const [merchants,        setMerchants]        = useState<{ id: string; shop_name: string | null }[]>([]);
@@ -116,7 +117,7 @@ export default function AdminPage() {
           {(["catalog", "embed"] as Tab[]).map((t) => (
             <button
               key={t}
-              onClick={() => { setTab(t); setShowForm(false); }}
+              onClick={() => { setTab(t); setShowForm(false); setEditingProduct(null); }}
               className={`px-4 py-3 text-xs uppercase tracking-widest border-b-2 transition-colors capitalize ${
                 tab === t
                   ? "border-primary text-foreground"
@@ -134,13 +135,14 @@ export default function AdminPage() {
             <div className="flex flex-col gap-6">
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl text-foreground">Product catalog</h1>
-                {!showForm && (
+                {!showForm && !editingProduct && (
                   <Button onClick={() => setShowForm(true)} size="sm" className="gap-2">
                     <Plus className="h-4 w-4" />Add product
                   </Button>
                 )}
               </div>
 
+              {/* New product form */}
               {showForm && (
                 <div className="rounded-lg border border-border bg-card p-6">
                   <h2 className="text-base font-medium mb-4">New product</h2>
@@ -156,12 +158,31 @@ export default function AdminPage() {
                 </div>
               )}
 
+              {/* Edit existing product form */}
+              {editingProduct && (
+                <div className="rounded-lg border border-border bg-card p-6">
+                  <h2 className="text-base font-medium mb-4">Edit — {editingProduct.name}</h2>
+                  <ProductForm
+                    key={editingProduct.id}
+                    viewer={viewer}
+                    merchantId={activeMerchantId}
+                    initialProduct={editingProduct}
+                    onSave={() => {
+                      setEditingProduct(null);
+                      getProducts(activeMerchantId).then(setProducts).catch(console.error);
+                    }}
+                    onCancel={() => setEditingProduct(null)}
+                  />
+                </div>
+              )}
+
               {productsLoading ? (
                 <p className="text-sm text-muted-foreground">Loading…</p>
               ) : (
                 <CatalogGrid
                   products={products}
                   onDelete={handleDelete}
+                  onEdit={(p) => { setShowForm(false); setEditingProduct(p); }}
                 />
               )}
             </div>

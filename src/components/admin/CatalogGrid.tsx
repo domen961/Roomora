@@ -1,14 +1,15 @@
 import { useState } from "react";
-import { Trash2, Copy, Check } from "lucide-react";
+import { Trash2, Copy, Check, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Product } from "@/lib/products";
 
 interface Props {
   products: Product[];
   onDelete: (id: string) => void;
+  onEdit:   (product: Product) => void;
 }
 
-export default function CatalogGrid({ products, onDelete }: Props) {
+export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyId = (id: string) => {
@@ -34,7 +35,16 @@ export default function CatalogGrid({ products, onDelete }: Props) {
             key={product.id}
             className="rounded-lg border border-border bg-card overflow-hidden flex flex-col"
           >
-            <div className="aspect-[4/3] bg-secondary flex items-center justify-center overflow-hidden">
+            {/* Thumbnail — click to edit */}
+            <button
+              onClick={() => isOwned && onEdit(product)}
+              disabled={!isOwned}
+              title={isOwned ? "Click to edit" : undefined}
+              className={cn(
+                "aspect-[4/3] bg-secondary flex items-center justify-center overflow-hidden relative group",
+                isOwned && "cursor-pointer"
+              )}
+            >
               {product.thumbnail ? (
                 <img
                   src={product.thumbnail}
@@ -45,7 +55,14 @@ export default function CatalogGrid({ products, onDelete }: Props) {
               ) : (
                 <span className="text-xs text-muted-foreground px-2 text-center">{product.name}</span>
               )}
-            </div>
+              {/* Edit overlay on hover */}
+              {isOwned && (
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <Pencil className="h-5 w-5 text-white" />
+                </div>
+              )}
+            </button>
+
             <div className="p-2.5 flex flex-col gap-2 flex-1">
               <p className="text-xs font-medium leading-tight">{product.name}</p>
               <div className="flex gap-1.5 mt-auto">
@@ -65,13 +82,22 @@ export default function CatalogGrid({ products, onDelete }: Props) {
                   }
                 </button>
                 {isOwned && (
-                  <button
-                    onClick={() => onDelete(product.id)}
-                    title="Delete product"
-                    className="flex items-center justify-center rounded border border-border hover:border-destructive/50 hover:text-destructive px-2 py-1 text-muted-foreground transition-colors"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => onEdit(product)}
+                      title="Edit product"
+                      className="flex items-center justify-center rounded border border-border hover:border-primary/50 hover:text-primary px-2 py-1 text-muted-foreground transition-colors"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                    <button
+                      onClick={() => onDelete(product.id)}
+                      title="Delete product"
+                      className="flex items-center justify-center rounded border border-border hover:border-destructive/50 hover:text-destructive px-2 py-1 text-muted-foreground transition-colors"
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </>
                 )}
               </div>
             </div>

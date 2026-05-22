@@ -117,6 +117,41 @@ export async function saveProduct(
   if (error) throw new Error(error.message);
 }
 
+/** Update an existing product — re-uploads only images that aren't already in Storage */
+export async function updateProduct(
+  merchantId:  string,
+  productId:   string,
+  name:        string,
+  description: string,
+  images:      string[],
+  dimensions?: ProductDimensions,
+): Promise<void> {
+  // If the URL already points to this product's storage folder, reuse it as-is
+  const uploadOrReuse = (src: string, angle: string) =>
+    src.includes(`/product-images/${merchantId}/${productId}/`)
+      ? Promise.resolve(src)
+      : uploadSnapshot(merchantId, productId, angle, src);
+
+  const [url0, url1, urlThumb] = await Promise.all([
+    uploadOrReuse(images[0], "perspective"),
+    uploadOrReuse(images[1] ?? images[0], "front"),
+    uploadOrReuse(images[2] ?? images[0], "side"),
+  ]);
+
+  const { error } = await supabase.from("products").update({
+    name,
+    description,
+    image_0:   url0,
+    image_1:   url1,
+    thumbnail: urlThumb,
+    length_cm: dimensions?.length_cm ?? null,
+    width_cm:  dimensions?.width_cm  ?? null,
+    height_cm: dimensions?.height_cm ?? null,
+  }).eq("id", productId).eq("merchant_id", merchantId);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Delete a product and its storage files */
 export async function deleteProduct(
   merchantId: string,
