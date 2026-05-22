@@ -331,7 +331,14 @@ export async function placeInRoom(
 
   const roomResized = await resizeImage(roomPhoto, 1024, 1024, 0.85);
 
-  const parts: unknown[] = [];
+  // Room photo goes FIRST so Gemini treats it as the canvas to edit
+  const parts: unknown[] = [
+    {
+      text:
+        "⚠️ THIS IS THE ROOM YOU MUST EDIT. Your output must be this exact room photo with only the furniture changed — same walls, same floor, same lighting, same perspective, same everything. Do NOT generate a new room.",
+    },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+  ];
 
   if (productImages.length > 0) {
     const dataUrls = await Promise.all(productImages.slice(0, 2).map(toDataUrl));
@@ -339,13 +346,13 @@ export async function placeInRoom(
 
     if (resized[0]) {
       parts.push(
-        { text: "Product reference photo — memorise its shape, material, colour, and style. Ignore any props around it." },
+        { text: "Product to place — study its shape, material, colour, style. Ignore any styling props around it." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } },
       );
     }
     if (resized[1]) {
       parts.push(
-        { text: "Second product view — use for outline and depth." },
+        { text: "Second view of the same product — use for outline and depth." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } },
       );
     }
@@ -355,14 +362,14 @@ export async function placeInRoom(
     ? ` Product dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  parts.push(
-    { text: "Room photo to edit:" },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    {
-      text:
-        `Edit this room: (1) Remove all existing "${productDescription}" furniture from the room and fill gaps with matching floor/wall textures. (2) Place the product from the reference images naturally on the floor, matching the room's perspective and lighting.${dimNote} Scale it realistically to the room. Add a soft shadow. (3) Keep everything else unchanged. Same crop and framing as input — no zoom or reframe. Output the edited photo only.`,
-    },
-  );
+  parts.push({
+    text:
+      `Now edit the room photo above (the first image): ` +
+      `(1) Remove any existing ${productDescription} already in the room and fill the gap with realistic floor/wall texture. ` +
+      `(2) Place the product from the reference images on the floor in a natural position, matching the room's perspective and lighting.${dimNote} Scale it to look physically correct. Add a soft shadow. ` +
+      `(3) Leave every other part of the room completely untouched — walls, floor, ceiling, all other objects, lighting. ` +
+      `Output only the edited room photo. Same crop, same framing, no zoom.`,
+  });
 
   const raw = await callGemini(parts);
   return cropToRatio(raw, origW, origH);
