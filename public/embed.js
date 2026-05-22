@@ -26,14 +26,27 @@
   ].join("\n");
   document.head.appendChild(style);
 
+  var isMobileDevice =
+    /Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+
   // ── Open overlay ───────────────────────────────────────────────────────────
   function openProduct(productId) {
+    var url = origin + "/try/" + shopId + "/" + encodeURIComponent(productId);
+
+    // On mobile: navigate directly — no iframe, no browser-chrome gaps, truly full-screen
+    if (isMobileDevice) {
+      window.location.href = url;
+      return;
+    }
+
+    // Desktop: overlay + iframe
     const overlay = document.createElement("div");
     overlay.className = "roomora-overlay";
 
     const iframe = document.createElement("iframe");
     iframe.className = "roomora-iframe";
-    iframe.src = origin + "/try/" + shopId + "/" + encodeURIComponent(productId);
+    iframe.src = url;
     iframe.allow = "camera; microphone";
     iframe.title = "See in your room — powered by Roomora";
 
