@@ -18,10 +18,24 @@ function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
   });
+}
+
+/**
+ * Ensures an image is a data URL. If it's an http(s) URL, fetches it via the
+ * /api/scrape proxy (which handles CORS) and returns a base64 data URL.
+ */
+async function toDataUrl(src: string): Promise<string> {
+  if (src.startsWith("data:")) return src;
+  const res = await fetch(`/api/scrape?url=${encodeURIComponent(src)}&type=image`);
+  if (!res.ok) throw new Error(`Failed to fetch image (${res.status}): ${src}`);
+  const { data, mimeType } = await res.json();
+  if (!data) throw new Error(`Empty image data from proxy: ${src}`);
+  return `data:${mimeType};base64,${data}`;
 }
 
 async function cropToRatio(src: string, targetW: number, targetH: number): Promise<string> {
@@ -332,8 +346,13 @@ export async function placeInRoom(
     const { mimeType: emptyMime, data: emptyData } = parseDataUrl(emptyRoom);
 
     // ── Call 2: Place the product ─────────────────────────────────────────────
+    // Convert any Supabase / HTTP URLs to base64 data URLs via proxy first,
+    // so canvas operations don't get blocked by CORS taint.
+    const dataUrls = await Promise.all(
+      productImages.slice(0, 2).map(toDataUrl)
+    );
     const resized = await Promise.all(
-      productImages.slice(0, 2).map((img) => resizeImage(img, 1024, 1024, 0.92))
+      dataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92))
     );
 
     const placeParts: unknown[] = [
