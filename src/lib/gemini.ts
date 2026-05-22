@@ -348,8 +348,30 @@ export async function placeInRoom(
     productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
   );
 
-  // ALL instructions go in ONE text block BEFORE the images — mirrors the working POC structure.
-  // Images follow in order: (1) canvas room, (2) primary ref, [(3) secondary ref], [(4) material close-up]
+  // ── CALL 1: ERASE existing furniture ────────────────────────────────────────
+  // Separate erase pass so Gemini only focuses on removing furniture + filling
+  // background — no product reference images to distract it.
+  const erasePrompt =
+    `You are a photo editor. Remove all ${productLabel.toLowerCase()}s or any furniture of the same category from this room photo.\n` +
+    `Fill the removed area naturally by extending the floor and wall textures from the surrounding areas.\n` +
+    `Do not change anything else — walls, ceiling, windows, floor texture, lighting, and room geometry must remain exactly as they are.\n` +
+    `Output only the edited room photo with the furniture removed. No text.`;
+
+  let cleanRoomDataUrl: string;
+  try {
+    const cleanRoomRaw = await callGemini([
+      { text: erasePrompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    ]);
+    cleanRoomDataUrl = await resizeImage(cleanRoomRaw, 1536, 1536, 0.92);
+  } catch {
+    // If erase fails, fall back to the original room
+    cleanRoomDataUrl = roomResized;
+  }
+
+  // ── CALL 2: PLACE new product ─────────────────────────────────────────────
+  // Uses the clean room from Call 1. Mirrors the working POC prompt structure:
+  // all text first, then images in order.
   const numImages  = 1 + productResized.length;
   const imgWord    = numImages === 1 ? "one image" : `${numImages} images`;
   const refLabel   = productResized.length === 1
@@ -361,29 +383,30 @@ export async function placeInRoom(
     ? `MATERIAL CLOSE-UP (${numImages === 4 ? "fourth" : "last"} image): A close-up photo of the product's surface/material. Use it to accurately reproduce the texture, finish, and colour in the final composite.\n\n`
     : "";
 
-  const fullPrompt =
+  const placePrompt =
     `You are a photo compositor. You will receive ${imgWord} and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
-    `DO NOT change the walls, floor, ceiling, windows, architectural features, lighting, or atmosphere. Preserve everything about the room.\n\n` +
+    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
     `${productLabel} REFERENCE ${refLabel}: A render or photo showing the exact product to insert.\n` +
     `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
     closeupNote +
     `Editing instructions:\n` +
-    `1. Replace any existing ${productLabel.toLowerCase()} in the CANVAS with the ${productLabel} shown in the REFERENCE. If there is no existing ${productLabel.toLowerCase()}, place it on the floor in the most natural central position.${dimNote}\n` +
-    `2. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
-    `3. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `4. The output image must match the CANVAS in framing, crop, and orientation — same camera angle, same perspective, same room geometry. Do not zoom, pan, or reframe.\n\n` +
+    `1. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +
+    `2. Place it on the floor in the most natural central position.${dimNote}\n` +
+    `3. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
+    `4. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+    `5. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
-  const parts: unknown[] = [
-    { text: fullPrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+  const placeParts: unknown[] = [
+    { text: placePrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(cleanRoomDataUrl) } },
     ...productResized.map((img) => ({
       inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
     })),
   ];
 
-  const raw = await callGemini(parts);
+  const raw = await callGemini(placeParts);
   return cropToRatio(raw, origW, origH);
 }
