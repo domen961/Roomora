@@ -44,9 +44,9 @@ export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
                 isOwned && "cursor-pointer"
               )}
             >
-              {product.thumbnail ? (
+              {product.images[0] ? (
                 <img
-                  src={product.thumbnail}
+                  src={product.images[0]}
                   alt={product.name}
                   className="w-full h-full object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
