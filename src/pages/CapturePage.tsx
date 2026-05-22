@@ -264,7 +264,7 @@ export default function CapturePage() {
       {/* Top gradient — keeps text readable without dimming the whole scene */}
       <div
         className="absolute top-0 left-0 right-0 pointer-events-none"
-        style={{ height: "55%", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)" }}
+        style={{ height: "55%", background: "linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0) 100%)" }}
       />
 
       {/* Loading spinner while camera warms up */}
