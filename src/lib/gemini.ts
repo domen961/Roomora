@@ -336,11 +336,13 @@ export async function placeInRoom(
     {
       text:
         "⚠️ ROOM PHOTO — THIS IS YOUR CANVAS. " +
-        "You must output this EXACT room with only the furniture swapped. " +
-        "CRITICAL FRAMING RULE: the output image must have the IDENTICAL field of view, zoom level, " +
-        "composition, and aspect ratio as this input photo. " +
-        "Do NOT zoom in. Do NOT zoom out. Do NOT pan. Do NOT crop. Do NOT change the camera angle. " +
-        "The output must look like a screenshot taken at the exact same moment with the exact same camera position — only the furniture is different.",
+        `Original dimensions: ${origW}×${origH} pixels. ` +
+        "You MUST reproduce the FULL room at this exact framing. " +
+        "EVERY element visible in this photo — ceiling, walls, floor, door, windows, all existing objects — " +
+        "must appear in the output at the SAME POSITION and SAME SIZE. " +
+        "The camera is FROZEN. No zoom. No pan. No crop. No reframe. " +
+        "The placed furniture must fit naturally inside this wide shot — " +
+        "do NOT zoom toward it or make it fill the frame.",
     },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
   ];
@@ -351,31 +353,35 @@ export async function placeInRoom(
 
     if (resized[0]) {
       parts.push(
-        { text: "Product to place — study its shape, material, colour, style. Ignore any styling props around it." },
+        { text: "Product reference image — study shape, material, colour, style only. This is NOT a room photo." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } },
       );
     }
     if (resized[1]) {
       parts.push(
-        { text: "Second view of the same product — use for outline and depth." },
+        { text: "Second product reference — use for depth and outline. This is NOT a room photo." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } },
       );
     }
   }
 
   const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
-    ? ` Product dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
+    ? ` Dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
   parts.push({
     text:
-      `Edit the room photo (the first image above): ` +
-      `(1) Remove any existing ${productDescription} already in the room and fill the gap with realistic floor/wall texture. ` +
-      `(2) Place the product shown in the reference images on the floor in a natural position, matching the room's existing perspective and lighting.${dimNote} Scale it to look physically correct relative to other objects in the room. Add a soft realistic shadow beneath it. ` +
-      `(3) Leave every other part of the room completely untouched — walls, floor, ceiling, all other furniture, all objects, lighting, and colours. ` +
-      `⚠️ FRAMING CONSTRAINT (non-negotiable): the output image must have the EXACT same zoom, field of view, and composition as the input room photo. ` +
-      `Do NOT zoom in, do NOT zoom out, do NOT crop, do NOT shift the camera. ` +
-      `Output only the edited room photo with no extra text.`,
+      `Task: edit the ROOM PHOTO (first image). ` +
+      `(1) Remove any existing ${productDescription} from the room; fill the gap with realistic floor/wall texture. ` +
+      `(2) Place the product (from the reference images) on the floor in a natural position.${dimNote} ` +
+      `Scale it proportionally — it should appear as one small-to-medium object in a wide room shot, NOT dominating the frame. ` +
+      `Match the room's perspective and lighting. Add a soft shadow. ` +
+      `(3) Keep every other part of the room pixel-perfect: walls, ceiling, floor, door, all other objects, all lighting. ` +
+      `⚠️ ABSOLUTE OUTPUT RULE: reproduce the COMPLETE room at the same ${origW}×${origH} framing — ` +
+      `same zoom, same field of view, same composition. ` +
+      `The placed item must look natural in a WIDE room shot. ` +
+      `Do NOT zoom in, do NOT zoom toward the furniture, do NOT crop, do NOT reframe. ` +
+      `Output only the edited room photo.`,
   });
 
   const raw = await callGemini(parts);
