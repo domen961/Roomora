@@ -2,21 +2,42 @@ import { useParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Check, ImageIcon, Loader2, AlertCircle, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { getProducts } from "@/lib/db";
+import { placeInRoom } from "@/lib/gemini";
 import Logo from "@/components/Logo";
+import type { Product } from "@/lib/products";
 
-type Phase = "idle" | "sending" | "waiting_result" | "result" | "error";
+type Phase = "idle" | "generating" | "result" | "error";
 
 export default function CapturePage() {
-  const { token } = useParams<{ token: string }>();
+  const { token, merchantId, productId } = useParams<{
+    token: string;
+    merchantId?: string;
+    productId?: string;
+  }>();
+
+  const isDirectMode = !!(merchantId && productId);
+
+  // Product (loaded when in direct mode)
+  const [product, setProduct] = useState<Product | null>(null);
+
+  useEffect(() => {
+    if (!isDirectMode || !merchantId || !productId) return;
+    getProducts(merchantId)
+      .then((list) => {
+        const p = list.find((p) => p.id === productId);
+        if (p) setProduct(p);
+      })
+      .catch(console.error);
+  }, [isDirectMode, merchantId, productId]);
 
   // Camera
   const videoRef   = useRef<HTMLVideoElement>(null);
   const streamRef  = useRef<MediaStream | null>(null);
   const [cameraReady,  setCameraReady]  = useState(false);
   const [cameraFailed, setCameraFailed] = useState(false);
-  const [cameraKey,    setCameraKey]    = useState(0); // increment to restart camera
+  const [cameraKey,    setCameraKey]    = useState(0);
 
-  // Two file inputs: gallery (no capture) + fallback (capture=environment)
   const galleryInputRef  = useRef<HTMLInputElement>(null);
   const fallbackInputRef = useRef<HTMLInputElement>(null);
 
@@ -55,30 +76,68 @@ export default function CapturePage() {
     };
   }, [cameraKey, cameraFailed]);
 
-  // ── Subscribe to result coming back from desktop ──────────────────────────
-  useEffect(() => {
+  // ── Process a photo (direct mode: call Gemini right here on the phone) ─────
+  const processPhoto = async (photo: string) => {
     if (!token) return;
+    setPhase("generating");
+
+    try {
+      if (isDirectMode && product) {
+        // ── DIRECT MODE: phone runs Gemini itself ────────────────────────────
+        const result = await placeInRoom(
+          product.images,
+          photo,
+          product.description,
+          {
+            length_cm: product.length_cm ?? undefined,
+            width_cm:  product.width_cm  ?? undefined,
+            height_cm: product.height_cm ?? undefined,
+          },
+        );
+        setResultImage(result);
+        setPhase("result");
+
+        // Save compressed result to Supabase so desktop can pick it up too
+        compressDataUrl(result, 700, 0.70).then((compressed) => {
+          supabase.from("room_captures")
+            .upsert({ token, result: compressed })
+            .then(() => {
+              setTimeout(() => {
+                supabase.from("room_captures").delete().eq("token", token).then(() => {});
+              }, 900_000);
+            });
+        });
+
+      } else {
+        // ── RELAY MODE (legacy): upload photo, wait for desktop ──────────────
+        const { error: dbError } = await supabase
+          .from("room_captures")
+          .upsert({ token, photo, result: null });
+        if (dbError) throw new Error(dbError.message);
+        // result will arrive via the Realtime subscription below
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to generate");
+      setPhase("error");
+    }
+  };
+
+  // ── Relay mode: subscribe for result coming back from desktop ─────────────
+  useEffect(() => {
+    if (!token || isDirectMode) return;
     const channel = supabase
       .channel("capture_result:" + token)
       .on(
         "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "room_captures",
-          filter: `token=eq.${token}`,
-        },
+        { event: "UPDATE", schema: "public", table: "room_captures", filter: `token=eq.${token}` },
         (payload) => {
           const result = (payload.new as { result: string | null }).result;
-          if (result) {
-            setResultImage(result);
-            setPhase("result");
-          }
+          if (result) { setResultImage(result); setPhase("result"); }
         }
       )
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [token]);
+  }, [token, isDirectMode]);
 
   // ── Capture live frame ────────────────────────────────────────────────────
   const handleCapture = async () => {
@@ -92,7 +151,7 @@ export default function CapturePage() {
     canvas.width  = Math.round((video.videoWidth  || 1280) * scale);
     canvas.height = Math.round((video.videoHeight || 720)  * scale);
     canvas.getContext("2d")!.drawImage(video, 0, 0, canvas.width, canvas.height);
-    await sendPhoto(canvas.toDataURL("image/jpeg", 0.85));
+    await processPhoto(canvas.toDataURL("image/jpeg", 0.85));
   };
 
   // ── Pick from gallery ─────────────────────────────────────────────────────
@@ -103,33 +162,18 @@ export default function CapturePage() {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     try {
       const photo = await compressImage(file, 1024, 0.85);
-      await sendPhoto(photo);
+      await processPhoto(photo);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to process image");
       setPhase("error");
     }
   };
 
-  const sendPhoto = async (photo: string) => {
-    setPhase("sending");
-    try {
-      // upsert clears any old result so the desktop re-processes on retry
-      const { error: dbError } = await supabase
-        .from("room_captures")
-        .upsert({ token, photo, result: null });
-      if (dbError) throw new Error(dbError.message);
-      setPhase("waiting_result");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send photo");
-      setPhase("error");
-    }
-  };
-
-  // ── Retry: restart camera + clear result ─────────────────────────────────
+  // ── Retry ────────────────────────────────────────────────────────────────
   const handleRetry = () => {
     setResultImage(null);
     setPhase("idle");
-    setCameraKey((k) => k + 1); // triggers camera useEffect to restart
+    setCameraKey((k) => k + 1);
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -138,38 +182,22 @@ export default function CapturePage() {
   if (phase === "result" && resultImage) {
     return (
       <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
-        {/* Full-screen result image */}
-        <img
-          src={resultImage}
-          alt="Your room with the furniture"
-          className="absolute inset-0 w-full h-full object-cover"
-        />
-
-        {/* Gradient overlay at bottom */}
+        <img src={resultImage} alt="Your room with the furniture"
+          className="absolute inset-0 w-full h-full object-cover" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-
-        {/* Logo at top */}
         <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none">
           <Logo />
         </div>
-
-        {/* Bottom controls */}
         <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
           <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
           <div className="flex gap-3 w-full max-w-xs">
-            <button
-              onClick={handleRetry}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform"
-            >
-              <RotateCcw className="h-4 w-4" />
-              Retry
+            <button onClick={handleRetry}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
+              <RotateCcw className="h-4 w-4" />Retry
             </button>
-            <button
-              onClick={() => setPhase("idle")}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform"
-            >
-              <Check className="h-4 w-4" />
-              Done
+            <button onClick={() => setPhase("idle")}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
+              <Check className="h-4 w-4" />Done
             </button>
           </div>
         </div>
@@ -178,19 +206,19 @@ export default function CapturePage() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // SENDING / WAITING SCREENS (dark overlay, camera stopped)
+  // GENERATING SCREEN
   // ─────────────────────────────────────────────────────────────────────────
-  if (phase === "sending" || phase === "waiting_result") {
+  if (phase === "generating") {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-6 px-6 text-center">
         <Logo />
         <Loader2 className="h-14 w-14 animate-spin text-primary" />
         <div>
           <p className="text-base font-medium text-foreground">
-            {phase === "sending" ? "Sending photo…" : "Placing the product in your room…"}
+            {isDirectMode ? "Placing the product in your room…" : "Sending photo…"}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {phase === "sending" ? "Uploading to server" : "Usually 30–60 seconds"}
+            {isDirectMode ? "Usually 30–60 seconds" : "Uploading to server"}
           </p>
         </div>
       </div>
@@ -217,7 +245,7 @@ export default function CapturePage() {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // FALLBACK: camera denied → plain dark screen with file input
+  // FALLBACK: camera denied
   // ─────────────────────────────────────────────────────────────────────────
   if (cameraFailed) {
     return (
@@ -235,56 +263,40 @@ export default function CapturePage() {
         >
           <Camera className="h-14 w-14 text-primary" />
         </button>
-        <input
-          ref={fallbackInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFile}
-        />
+        <input ref={fallbackInputRef} type="file" accept="image/*" capture="environment"
+          className="hidden" onChange={handleFile} />
         <p className="text-xs text-muted-foreground">Natural lighting gives the best results</p>
       </div>
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // PRIMARY: live camera background
+  // PRIMARY: live camera
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
-      {/* Live camera feed */}
-      <video
-        ref={videoRef}
-        playsInline
-        muted
-        className="absolute inset-0 w-full h-full object-cover"
-      />
+      <video ref={videoRef} playsInline muted
+        className="absolute inset-0 w-full h-full object-cover" />
 
-      {/* Top gradient — keeps text readable without dimming the whole scene */}
+      {/* Top gradient for text readability */}
       <div
         className="absolute top-0 left-0 right-0 pointer-events-none"
         style={{ height: "55%", background: "linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0) 100%)" }}
       />
 
-      {/* Loading spinner while camera warms up */}
       {!cameraReady && (
         <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-white/60" />
         </div>
       )}
 
-      {/* UI overlay */}
       {cameraReady && (
         <div className="absolute inset-0 flex flex-col items-center justify-between py-12 px-6 text-center">
-          {/* Top: logo + title */}
           <div className="flex flex-col items-center gap-4">
             <Logo />
             <div>
-              <h1
-                className="text-2xl font-light text-primary"
-                style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}
-              >
+              <h1 className="text-2xl font-light text-primary"
+                style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
                 Photograph your room
               </h1>
               <p className="text-sm text-white/70 mt-1 max-w-xs">
@@ -293,28 +305,18 @@ export default function CapturePage() {
             </div>
           </div>
 
-          {/* Bottom: gallery + shutter */}
           <div className="flex flex-col items-center gap-4">
             <div className="flex items-center justify-center gap-8">
-              {/* Gallery — opens photo library */}
-              <button
-                onClick={() => galleryInputRef.current?.click()}
+              <button onClick={() => galleryInputRef.current?.click()}
                 className="w-14 h-14 rounded-full border-2 border-white/60 bg-white/10 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-transform shadow-lg"
-                aria-label="Choose from gallery"
-              >
+                aria-label="Choose from gallery">
                 <ImageIcon className="h-6 w-6 text-white" />
               </button>
-
-              {/* Shutter */}
-              <button
-                onClick={handleCapture}
+              <button onClick={handleCapture}
                 className="w-20 h-20 rounded-full border-4 border-white bg-white/20 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-transform shadow-lg"
-                aria-label="Take photo"
-              >
+                aria-label="Take photo">
                 <Camera className="h-9 w-9 text-white" />
               </button>
-
-              {/* Spacer keeps shutter centred */}
               <div className="w-14 h-14" />
             </div>
             <p className="text-xs text-white/50">Natural lighting gives the best results</p>
@@ -322,17 +324,13 @@ export default function CapturePage() {
         </div>
       )}
 
-      {/* Hidden gallery input (no capture attr → opens library) */}
-      <input
-        ref={galleryInputRef}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={handleFile}
-      />
+      <input ref={galleryInputRef} type="file" accept="image/*"
+        className="hidden" onChange={handleFile} />
     </div>
   );
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function compressImage(file: File, maxPx: number, quality: number): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -349,5 +347,21 @@ function compressImage(file: File, maxPx: number, quality: number): Promise<stri
     };
     img.onerror = () => reject(new Error("Failed to load image"));
     img.src = url;
+  });
+}
+
+function compressDataUrl(dataUrl: string, maxPx: number, quality: number): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxPx / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      canvas.getContext("2d")!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
   });
 }

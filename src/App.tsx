@@ -13,7 +13,8 @@ export default function App() {
         <Route path="/login"                  element={<LoginPage />} />
         <Route path="/admin/*"                element={<AdminPage />} />
         <Route path="/try/:shopId/:productId" element={<TryPage />} />
-        <Route path="/capture/:token"         element={<CapturePage />} />
+        <Route path="/capture/:token"                              element={<CapturePage />} />
+        <Route path="/capture/:token/:merchantId/:productId"    element={<CapturePage />} />
       </Routes>
     </div>
   );

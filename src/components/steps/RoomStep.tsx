@@ -8,9 +8,10 @@ import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
 interface Props {
-  product: { images: string[]; description: string; name: string };
-  onResult: (resultUrl: string) => void;
-  onBack: () => void;
+  product:    { images: string[]; description: string; name: string; id: string; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
+  merchantId: string;
+  onResult:   (resultUrl: string) => void;
+  onBack:     () => void;
 }
 
 const isMobile =
@@ -20,7 +21,7 @@ const isMobile =
 
 type Phase = "idle" | "processing" | "error";
 
-export default function RoomStep({ product, onResult, onBack }: Props) {
+export default function RoomStep({ product, merchantId, onResult, onBack }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -34,7 +35,11 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
   const [qrDataUrl, setQrDataUrl] = useState("");
   const [phoneStatus, setPhoneStatus] = useState<"waiting" | "received">("waiting");
 
-  const captureUrl = useMemo(() => `${window.location.origin}/capture/${token}`, [token]);
+  // Include merchantId + productId so the phone can call Gemini directly
+  const captureUrl = useMemo(
+    () => `${window.location.origin}/capture/${token}/${merchantId}/${product.id}`,
+    [token, merchantId, product.id]
+  );
   const isLocalhost = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
   // Generate QR code (amber on dark, on-brand)
@@ -63,9 +68,13 @@ export default function RoomStep({ product, onResult, onBack }: Props) {
           filter: `token=eq.${token}`,
         },
         (payload) => {
-          const row = payload.new as { photo: string; result: string | null };
-          // Only process when there's a new photo and no result yet
-          if (row.photo && !row.result) {
+          const row = payload.new as { photo?: string; result: string | null };
+          if (row.result) {
+            // Direct mode: phone already ran Gemini — just surface the result
+            setPhoneStatus("received");
+            onResult(row.result);
+          } else if (row.photo && !row.result) {
+            // Relay mode (legacy): desktop processes the photo
             setPhoneStatus("received");
             processRoomPhoto(row.photo, token);
           }
