@@ -76,28 +76,41 @@ async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.
 }
 
 async function callGemini(parts: unknown[]): Promise<string> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90_000); // 90 s hard limit
+
   const body = {
     contents: [{ role: "user", parts }],
     generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
   };
 
-  const res = await fetch(getEndpoint(), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  try {
+    const res = await fetch(getEndpoint(), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gemini API ${res.status}: ${text}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`Gemini API ${res.status}: ${text}`);
+    }
+
+    const data = await res.json();
+    const responseParts: unknown[] = data?.candidates?.[0]?.content?.parts ?? [];
+    const imgPart = responseParts.find((p: any) => typeof p?.inlineData?.data === "string") as any;
+    if (!imgPart) throw new Error("No image returned by Gemini");
+
+    return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+  } catch (err) {
+    if ((err as Error).name === "AbortError") {
+      throw new Error("Generation timed out after 90 s — please try again");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
   }
-
-  const data = await res.json();
-  const responseParts: unknown[] = data?.candidates?.[0]?.content?.parts ?? [];
-  const imgPart = responseParts.find((p: any) => typeof p?.inlineData?.data === "string") as any;
-  if (!imgPart) throw new Error("No image returned by Gemini");
-
-  return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
 }
 
 export interface ProductDimensions {
@@ -321,102 +334,48 @@ export async function placeInRoom(
   const origW = origImg.width;
   const origH = origImg.height;
 
-  const roomResized = await resizeImage(roomPhoto, 2048, 2048, 0.92);
+  // Smaller images = faster upload + faster model processing
+  const roomResized = await resizeImage(roomPhoto, 1280, 1280, 0.88);
 
-  let raw: string;
+  const parts: unknown[] = [];
 
   if (productImages.length > 0) {
-    // ── Call 1: Erase existing furniture ──────────────────────────────────────
-    const eraseParts = [
-      {
-        text:
-          "⚠️ FRAMING RULE (non-negotiable): The output must have the EXACT same crop, field of view, and aspect ratio as the input. Do NOT zoom, pan, or reframe in any way.\n\n" +
-          `The product being placed is: "${productDescription}".\n\n` +
-          "TASK — ERASE STEP:\n" +
-          "1. Identify the furniture CATEGORY of the product above (e.g. dining table, sofa, desk, bed, coffee table, wardrobe, shelf, armchair, etc.).\n" +
-          "2. Find and remove EVERY item in the room photo that belongs to that same category — regardless of colour, size, material, or style. Remove ALL of them, not just the most obvious one.\n" +
-          "3. Fill every vacated area with realistic floor, wall, or background textures that blend seamlessly with the surroundings — no smearing, no ghost outlines, no blank patches.\n" +
-          "4. Leave all other objects, walls, lighting, and architecture completely unchanged.\n\n" +
-          "Output only the edited photo with the category cleared. No text.",
-      },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ];
-
-    const emptyRoom = await callGemini(eraseParts);
-    const { mimeType: emptyMime, data: emptyData } = parseDataUrl(emptyRoom);
-
-    // ── Call 2: Place the product ─────────────────────────────────────────────
-    // Convert any Supabase / HTTP URLs to base64 data URLs via proxy first,
-    // so canvas operations don't get blocked by CORS taint.
-    const dataUrls = await Promise.all(
-      productImages.slice(0, 2).map(toDataUrl)
-    );
-    const resized = await Promise.all(
-      dataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92))
-    );
-
-    const placeParts: unknown[] = [
-      {
-        text:
-          "⚠️ FRAMING RULE (non-negotiable): The output must have the EXACT same crop, field of view, and aspect ratio as the EMPTY ROOM photo. Do NOT zoom, pan, or reframe in any way.\n\n" +
-          "You will receive product reference images and an EMPTY ROOM photo to edit.",
-      },
-    ];
+    // Convert any Supabase / HTTP URLs to base64 before canvas ops
+    const dataUrls = await Promise.all(productImages.slice(0, 2).map(toDataUrl));
+    const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 768, 768, 0.85)));
 
     if (resized[0]) {
-      placeParts.push(
-        { text: "DESIGN REFERENCE — a photo of the product. Study the main furniture piece only: its material, colour, shape, proportions, and style. Ignore any chairs, stools, decorations, tableware, flowers, lamps, or other objects shown alongside it — those are styling props, not part of the product." },
+      parts.push(
+        { text: "PRODUCT REFERENCE — study this furniture piece: its exact material, colour, shape, proportions, and style. Ignore any styling props (chairs, decorations, tableware, flowers, lamps, etc.) shown alongside it — focus only on the main product." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } },
       );
     }
     if (resized[1]) {
-      placeParts.push(
-        { text: "SECONDARY REFERENCE — another view of the same product. Use this to understand its exact outline and depth. Again, focus only on the main furniture piece — ignore all styling props, chairs, decorations, and accessories." },
+      parts.push(
+        { text: "SECONDARY PRODUCT VIEW — use this to understand the product's exact outline, depth, and details. Focus on the main piece only, ignore props." },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } },
       );
     }
-
-    placeParts.push(
-      { text: "EMPTY ROOM (place the product into this photo):" },
-      { inlineData: { mimeType: emptyMime, data: emptyData } },
-      {
-        text:
-          "Edit the EMPTY ROOM photo as follows:\n" +
-          "STEP 1 — CLEAR: If any similar furniture is still visible, erase it and fill with realistic floor/wall textures.\n" +
-          "STEP 2 — PLACE: Put ONLY the main furniture piece from the reference images into the cleared space — not the chairs, not the decorations, not the tableware, only the product itself. Copy its exact material, colour, shape, and style. Position it naturally on the floor, centred in the main area. Match its viewing angle to the room's perspective.\n" +
-          "STEP 3 — INTEGRATE: Scale it realistically to the room." +
-          (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm
-            ? ` The product's real dimensions are:${dimensions.length_cm ? ` length ${dimensions.length_cm} cm` : ""}${dimensions.width_cm ? `, width ${dimensions.width_cm} cm` : ""}${dimensions.height_cm ? `, height ${dimensions.height_cm} cm` : ""}. Use these to set the correct proportional scale relative to the room's architecture (doorframes, walls, floor tiles, etc.).`
-            : " Use the room's architectural elements to judge realistic scale.") +
-          " Match its lighting and shadows to the room's light sources. Add a soft drop shadow beneath it.\n\n" +
-          "⚠️ FRAMING RULE (repeated): Same crop, same framing as the EMPTY ROOM photo. No zoom. No reframe. Output only the final photo.",
-      },
-    );
-
-    raw = await callGemini(placeParts);
-
-  } else {
-    // ── Single-call fallback: text description only ───────────────────────────
-    const parts = [
-      {
-        text:
-          "You are a photo editor. I am giving you a real room photograph.\n\n" +
-          "EDIT this exact photo — do NOT recreate or regenerate it.\n\n" +
-          "Task:\n" +
-          `1. Identify the furniture category of "${productDescription}". Find and remove EVERY item in the room that belongs to that same category — regardless of colour or size — and fill the area with natural floor/wall textures.\n` +
-          `2. Place a ${productDescription} in the cleared space.\n` +
-          `3. Place it in the most natural position in the room.\n` +
-          `4. Scale it realistically — it should look like it physically belongs there.\n` +
-          `5. Match its lighting and shading to the room's light sources. Add a soft shadow beneath it.\n` +
-          `6. Keep every other element completely unchanged.\n` +
-          `7. MANDATORY — do NOT crop, zoom, pan, or reframe the image in any way.\n\n` +
-          "Output only the edited photo. No text.",
-      },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ];
-
-    raw = await callGemini(parts);
   }
 
+  const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
+    ? ` The product's real dimensions are:${dimensions?.length_cm ? ` length ${dimensions.length_cm} cm` : ""}${dimensions?.width_cm ? `, width ${dimensions.width_cm} cm` : ""}${dimensions?.height_cm ? `, height ${dimensions.height_cm} cm` : ""}. Use these to set correct proportional scale relative to the room's architecture.`
+    : " Use the room's architectural elements (door frames, skirting boards, floor tiles) to judge realistic scale.";
+
+  parts.push(
+    { text: "ROOM PHOTO — edit this image:" },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    {
+      text:
+        `Edit the room photo above to place the product "${productDescription}".\n\n` +
+        "STEP 1 — CLEAR: Identify the furniture category of the product. Remove ALL existing items in the room that belong to that same category (regardless of colour, size, or style). Fill vacated areas with realistic floor/wall/background textures that blend seamlessly — no ghost outlines, no blank patches.\n\n" +
+        "STEP 2 — PLACE: Put ONLY the main product (from the reference images above, or matching the description if no images) into the cleared space. Copy its exact material, colour, shape, and style. Position it naturally on the floor, centred in the main area, with the viewing angle matching the room's perspective.\n\n" +
+        `STEP 3 — INTEGRATE: Scale it realistically.${dimNote} Match the room's lighting and shadows. Add a soft drop shadow beneath the product.\n\n` +
+        "⚠️ CRITICAL FRAMING RULE: The output must have the EXACT same crop, field of view, and aspect ratio as the input room photo. Do NOT zoom in, pan, or reframe in any way.\n\n" +
+        "Output only the final edited photo. No text.",
+    },
+  );
+
+  const raw = await callGemini(parts);
   return cropToRatio(raw, origW, origH);
 }

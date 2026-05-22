@@ -190,7 +190,7 @@ export default function CapturePage() {
             {phase === "sending" ? "Sending photo…" : "Generating your room…"}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {phase === "sending" ? "Uploading to server" : "This usually takes 20–40 seconds"}
+            {phase === "sending" ? "Uploading to server" : "Usually 30–60 seconds"}
           </p>
         </div>
       </div>
