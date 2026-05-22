@@ -261,8 +261,11 @@ export default function CapturePage() {
         className="absolute inset-0 w-full h-full object-cover"
       />
 
-      {/* Readable overlay */}
-      <div className="absolute inset-0 bg-black/40 pointer-events-none" />
+      {/* Top gradient — keeps text readable without dimming the whole scene */}
+      <div
+        className="absolute top-0 left-0 right-0 pointer-events-none"
+        style={{ height: "55%", background: "linear-gradient(to bottom, rgba(0,0,0,0.55) 0%, rgba(0,0,0,0) 100%)" }}
+      />
 
       {/* Loading spinner while camera warms up */}
       {!cameraReady && (
