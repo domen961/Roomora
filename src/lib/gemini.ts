@@ -356,26 +356,32 @@ export async function placeInRoom(
   //   • Conditional erase ("If there is an existing…") not mandatory
   //   • "or where the old [product] was" placement hint
   //   • Only TWO images total (room + one reference)
+  // Room photo also sent as the last image — visual framing reference.
+  // Gemini responds to visual examples better than text instructions for framing.
+  const numImages = primaryResized ? 3 : 2;
+
   const fullPrompt =
-    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
+    `You are a photo compositor. You will receive ${numImages} images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows, furniture already present must all stay pixel-perfect.\n\n` +
     `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
     `Use it only to copy the ${productLabel.toLowerCase()}'s shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
+    `FRAMING REFERENCE (${numImages === 3 ? "third" : "second"} image): This is the same photo as the CANVAS. It shows the exact camera angle, zoom level, and framing your output must match. The output must look like this image with only the ${productLabel.toLowerCase()} swapped.\n\n` +
     `Editing instructions:\n` +
     `1. If there is an existing ${productLabel.toLowerCase()} in the CANVAS photo, erase it and fill the area naturally with the floor/wall behind it.\n` +
     `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
     `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
     `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `6. Do NOT change the framing, zoom level, or crop of the image. Every part of the CANVAS that was visible must still be visible in the output at the same position and scale. Do NOT scale down the ${productLabel.toLowerCase()} to make it fit — if it is too large for the frame, let it be partially cropped at the edges. Accurate real-world scale is more important than fitting the entire product in frame.\n\n` +
+    `6. The output must match the FRAMING REFERENCE exactly — same camera angle, same zoom, same crop. Do NOT scale down the ${productLabel.toLowerCase()} to make it fit — if it is too large for the frame, let it be partially cropped at the edges.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
     { text: fullPrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },      // CANVAS
+    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),  // PRODUCT
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },      // FRAMING REFERENCE
   ];
 
   const raw = await callGemini(parts);
