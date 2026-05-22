@@ -129,10 +129,11 @@ export default function AdminPage() {
           ))}
         </div>
 
-        <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+        <main className={`flex-1 mx-auto w-full px-4 py-8 ${showForm || editingProduct ? "max-w-6xl" : "max-w-4xl"}`}>
           {/* Catalog tab */}
           {tab === "catalog" && (
             <div className="flex flex-col gap-6">
+              {/* Header */}
               <div className="flex items-center justify-between">
                 <h1 className="text-2xl text-foreground">Product catalog</h1>
                 {!showForm && !editingProduct && (
@@ -142,49 +143,58 @@ export default function AdminPage() {
                 )}
               </div>
 
-              {/* New product form */}
-              {showForm && (
-                <div className="rounded-lg border border-border bg-card p-6">
-                  <h2 className="text-base font-medium mb-4">New product</h2>
-                  <ProductForm
-                    viewer={viewer}
-                    merchantId={activeMerchantId}
-                    onSave={() => {
-                      setShowForm(false);
-                      getProducts(activeMerchantId).then(setProducts).catch(console.error);
-                    }}
-                    onCancel={() => setShowForm(false)}
-                  />
-                </div>
-              )}
+              {/* Two-column layout when a form panel is open */}
+              <div className="flex gap-6 items-start">
 
-              {/* Edit existing product form */}
-              {editingProduct && (
-                <div className="rounded-lg border border-border bg-card p-6">
-                  <h2 className="text-base font-medium mb-4">Edit — {editingProduct.name}</h2>
-                  <ProductForm
-                    key={editingProduct.id}
-                    viewer={viewer}
-                    merchantId={activeMerchantId}
-                    initialProduct={editingProduct}
-                    onSave={() => {
-                      setEditingProduct(null);
-                      getProducts(activeMerchantId).then(setProducts).catch(console.error);
-                    }}
-                    onCancel={() => setEditingProduct(null)}
-                  />
+                {/* Left: catalog grid */}
+                <div className="flex-1 min-w-0">
+                  {productsLoading ? (
+                    <p className="text-sm text-muted-foreground">Loading…</p>
+                  ) : (
+                    <CatalogGrid
+                      products={products}
+                      onDelete={handleDelete}
+                      onEdit={(p) => { setShowForm(false); setEditingProduct(p); }}
+                    />
+                  )}
                 </div>
-              )}
 
-              {productsLoading ? (
-                <p className="text-sm text-muted-foreground">Loading…</p>
-              ) : (
-                <CatalogGrid
-                  products={products}
-                  onDelete={handleDelete}
-                  onEdit={(p) => { setShowForm(false); setEditingProduct(p); }}
-                />
-              )}
+                {/* Right: form panel (new or edit) */}
+                {(showForm || editingProduct) && (
+                  <div className="w-[440px] flex-shrink-0 rounded-lg border border-border bg-card p-6 overflow-y-auto max-h-[calc(100vh-10rem)] sticky top-6">
+                    <h2 className="text-base font-medium mb-5">
+                      {editingProduct ? `Edit — ${editingProduct.name}` : "New product"}
+                    </h2>
+
+                    {showForm && (
+                      <ProductForm
+                        viewer={viewer}
+                        merchantId={activeMerchantId}
+                        onSave={() => {
+                          setShowForm(false);
+                          getProducts(activeMerchantId).then(setProducts).catch(console.error);
+                        }}
+                        onCancel={() => setShowForm(false)}
+                      />
+                    )}
+
+                    {editingProduct && (
+                      <ProductForm
+                        key={editingProduct.id}
+                        viewer={viewer}
+                        merchantId={activeMerchantId}
+                        initialProduct={editingProduct}
+                        onSave={() => {
+                          setEditingProduct(null);
+                          getProducts(activeMerchantId).then(setProducts).catch(console.error);
+                        }}
+                        onCancel={() => setEditingProduct(null)}
+                      />
+                    )}
+                  </div>
+                )}
+
+              </div>
             </div>
           )}
 
