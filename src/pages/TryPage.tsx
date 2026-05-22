@@ -22,7 +22,14 @@ export default function TryPage() {
     getProducts(shopId)
       .then((products: Product[]) => {
         const found = products.find((p) => p.id === productId);
-        if (!found) { setError("Product not found."); setPhase("error"); return; }
+        if (!found) {
+          const msg = products.length === 0
+            ? "No products found for this shop. Make sure the product is saved in the admin panel and that the Supabase 'public_read_products' RLS policy is enabled."
+            : `Product "${productId}" not found. Available IDs: ${products.map((p) => p.id).join(", ")}`;
+          setError(msg);
+          setPhase("error");
+          return;
+        }
         setProduct({ images: found.images, description: found.description, name: found.name });
         setPhase("room");
       })
