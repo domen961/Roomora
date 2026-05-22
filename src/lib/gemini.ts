@@ -9,11 +9,6 @@ function getEndpoint() {
 
 const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
 
-function parseDataUrl(dataUrl: string): { mimeType: string; data: string } {
-  const match = dataUrl.match(/^data:([^;]+);base64,(.+)$/s);
-  if (match) return { mimeType: match[1], data: match[2] };
-  return { mimeType: "image/jpeg", data: dataUrl };
-}
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
