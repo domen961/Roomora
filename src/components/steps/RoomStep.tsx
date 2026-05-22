@@ -173,7 +173,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
         <Loader2 className="h-14 w-14 animate-spin text-primary" />
         <div>
           <p className="text-base font-medium text-foreground">Placing the product in your room…</p>
-          <p className="text-sm text-muted-foreground mt-1">Usually 60–90 seconds</p>
+          <p className="text-sm text-muted-foreground mt-1">Usually 30–60 seconds</p>
         </div>
       </div>
     );

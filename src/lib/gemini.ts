@@ -340,73 +340,44 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Load and resize product images (up to 3)
-  const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 3).map(toDataUrl))
-    : [];
-  const productResized = await Promise.all(
-    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
-  );
+  // Load and resize the PRIMARY product image only — matching the POC "two images" structure.
+  // Sending multiple renders was found to confuse Gemini and cause room regeneration.
+  const primaryDataUrl = productImages.length > 0
+    ? await toDataUrl(productImages[0])
+    : null;
+  const primaryResized = primaryDataUrl
+    ? await resizeImage(primaryDataUrl, 1024, 1024, 0.92)
+    : null;
 
-  // ── CALL 1: ERASE existing furniture ────────────────────────────────────────
-  // Separate erase pass so Gemini only focuses on removing furniture + filling
-  // background — no product reference images to distract it.
-  const erasePrompt =
-    `You are a photo editor. Remove all ${productLabel.toLowerCase()}s or any furniture of the same category from this room photo.\n` +
-    `Fill the removed area naturally by extending the floor and wall textures from the surrounding areas.\n` +
-    `Do not change anything else — walls, ceiling, windows, floor texture, lighting, and room geometry must remain exactly as they are.\n` +
-    `Output only the edited room photo with the furniture removed. No text.`;
-
-  let cleanRoomDataUrl: string;
-  try {
-    const cleanRoomRaw = await callGemini([
-      { text: erasePrompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ]);
-    cleanRoomDataUrl = await resizeImage(cleanRoomRaw, 1536, 1536, 0.92);
-  } catch {
-    // If erase fails, fall back to the original room
-    cleanRoomDataUrl = roomResized;
-  }
-
-  // ── CALL 2: PLACE new product ─────────────────────────────────────────────
-  // Uses the clean room from Call 1. Mirrors the working POC prompt structure:
-  // all text first, then images in order.
-  const numImages  = 1 + productResized.length;
-  const imgWord    = numImages === 1 ? "one image" : `${numImages} images`;
-  const refLabel   = productResized.length === 1
-    ? "(second image)"
-    : productResized.length === 2 ? "(second and third images)"
-    : productResized.length >= 3  ? "(second, third, and fourth images)"
-    : "(next image)";
-  const closeupNote = productResized.length >= 3
-    ? `MATERIAL CLOSE-UP (${numImages === 4 ? "fourth" : "last"} image): A close-up photo of the product's surface/material. Use it to accurately reproduce the texture, finish, and colour in the final composite.\n\n`
-    : "";
-
-  const placePrompt =
-    `You are a photo compositor. You will receive ${imgWord} and editing instructions.\n\n` +
+  // Single call — exact POC prompt structure that was verified to preserve the room.
+  // Key elements vs previous attempts:
+  //   • "furniture already present must all stay pixel-perfect" in CANVAS block
+  //   • "3D render" explicit in REFERENCE block
+  //   • Conditional erase ("If there is an existing…") not mandatory
+  //   • "or where the old [product] was" placement hint
+  //   • Only TWO images total (room + one reference)
+  const fullPrompt =
+    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
-    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: A render or photo showing the exact product to insert.\n` +
-    `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
+    `DO NOT alter any room content — walls, floor, ceiling, windows, furniture already present must all stay pixel-perfect.\n\n` +
+    `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
+    `Use it only to copy the ${productLabel.toLowerCase()}'s shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
-    closeupNote +
     `Editing instructions:\n` +
-    `1. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +
-    `2. Place it on the floor in the most natural central position.${dimNote}\n` +
-    `3. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
-    `4. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `5. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
+    `1. If there is an existing ${productLabel.toLowerCase()} in the CANVAS photo, erase it and fill the area naturally with the floor/wall behind it.\n` +
+    `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
+    `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
+    `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
+    `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+    `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
-  const placeParts: unknown[] = [
-    { text: placePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(cleanRoomDataUrl) } },
-    ...productResized.map((img) => ({
-      inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
-    })),
+  const parts: unknown[] = [
+    { text: fullPrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
   ];
 
-  const raw = await callGemini(placeParts);
+  const raw = await callGemini(parts);
   return cropToRatio(raw, origW, origH);
 }
