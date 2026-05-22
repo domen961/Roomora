@@ -356,32 +356,29 @@ export async function placeInRoom(
   //   • Conditional erase ("If there is an existing…") not mandatory
   //   • "or where the old [product] was" placement hint
   //   • Only TWO images total (room + one reference)
-  // Room photo also sent as the last image — visual framing reference.
-  // Gemini responds to visual examples better than text instructions for framing.
-  const numImages = primaryResized ? 3 : 2;
-
+  // Two images only — matching the POC structure that was verified to work.
+  // The framing reference (3rd image = room again) was causing Gemini to treat
+  // the room-with-old-furniture as the desired output, blocking the erase step.
   const fullPrompt =
-    `You are a photo compositor. You will receive ${numImages} images and editing instructions.\n\n` +
+    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
-    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect. Furniture will be handled by the editing instructions below.\n\n` +
+    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
     `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
     `Use it only to copy the ${productLabel.toLowerCase()}'s shape, colour, material detail, and proportions.\n` +
     `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
-    `FRAMING REFERENCE (${numImages === 3 ? "third" : "second"} image): Same photo as the CANVAS — use it ONLY to lock the camera angle and zoom level. Ignore the furniture in this image; it will be replaced per the editing instructions below.\n\n` +
     `Editing instructions:\n` +
-    `1. Find and completely erase any ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS — regardless of its style, colour, or material, and even if it is partially covered or obscured by other objects. Fill the erased area naturally with the floor and wall visible in the surrounding areas.\n` +
+    `1. If there is an existing ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS photo, erase it completely — regardless of its style, colour, or material, and even if it is covered or obscured. Fill the area naturally with the floor and wall behind it.\n` +
     `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
     `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
     `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `6. The output must match the FRAMING REFERENCE exactly — same camera angle, same zoom, same crop. Do NOT scale down the ${productLabel.toLowerCase()} to make it fit — if it is too large for the frame, let it be partially cropped at the edges.\n\n` +
+    `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
     { text: fullPrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },      // CANVAS
-    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),  // PRODUCT
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },      // FRAMING REFERENCE
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
   ];
 
   const raw = await callGemini(parts);
