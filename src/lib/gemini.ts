@@ -331,18 +331,24 @@ export async function placeInRoom(
 
   const roomResized = await resizeImage(roomPhoto, 1536, 1536, 0.92);
 
-  // Room photo goes FIRST so Gemini treats it as the canvas to edit
+  // Derive a short label from the product description (e.g. "dining table" → "DINING TABLE")
+  const productLabel = productDescription
+    ? productDescription.split(/[,.(]/)[0].trim().toUpperCase().slice(0, 40)
+    : "PRODUCT";
+
+  const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
+    ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
+    : "";
+
   const parts: unknown[] = [
     {
       text:
-        "⚠️ ROOM PHOTO — THIS IS YOUR CANVAS. " +
-        `Original dimensions: ${origW}×${origH} pixels. ` +
-        "You MUST reproduce the FULL room at this exact framing. " +
-        "EVERY element visible in this photo — ceiling, walls, floor, door, windows, all existing objects — " +
-        "must appear in the output at the SAME POSITION and SAME SIZE. " +
-        "The camera is FROZEN. No zoom. No pan. No crop. No reframe. " +
-        "The placed furniture must fit naturally inside this wide shot — " +
-        "do NOT zoom toward it or make it fill the frame.",
+        `You are a photo compositor. You will receive images and editing instructions.\n\n` +
+        `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
+        `DO NOT alter any room content — walls, floor, ceiling, windows, furniture already present must all stay pixel-perfect.\n\n` +
+        `${productLabel} REFERENCE (next image(s)): A render or photo showing the exact product to insert.\n` +
+        `Use it only to copy the product's shape, colour, material detail, and proportions.\n` +
+        `Do NOT include any background or environment from the reference in the output.`,
     },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
   ];
@@ -352,36 +358,23 @@ export async function placeInRoom(
     const resized  = await Promise.all(dataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)));
 
     if (resized[0]) {
-      parts.push(
-        { text: "Product reference image — study shape, material, colour, style only. This is NOT a room photo." },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } },
-      );
+      parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[0]) } });
     }
     if (resized[1]) {
-      parts.push(
-        { text: "Second product reference — use for depth and outline. This is NOT a room photo." },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } },
-      );
+      parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(resized[1]) } });
     }
   }
 
-  const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
-    ? ` Dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
-    : "";
-
   parts.push({
     text:
-      `Task: edit the ROOM PHOTO (first image). ` +
-      `(1) Remove any existing ${productDescription} from the room; fill the gap with realistic floor/wall texture. ` +
-      `(2) Place the product (from the reference images) on the floor in a natural position.${dimNote} ` +
-      `Scale it proportionally — it should appear as one small-to-medium object in a wide room shot, NOT dominating the frame. ` +
-      `Match the room's perspective and lighting. Add a soft shadow. ` +
-      `(3) Keep every other part of the room pixel-perfect: walls, ceiling, floor, door, all other objects, all lighting. ` +
-      `⚠️ ABSOLUTE OUTPUT RULE: reproduce the COMPLETE room at the same ${origW}×${origH} framing — ` +
-      `same zoom, same field of view, same composition. ` +
-      `The placed item must look natural in a WIDE room shot. ` +
-      `Do NOT zoom in, do NOT zoom toward the furniture, do NOT crop, do NOT reframe. ` +
-      `Output only the edited room photo.`,
+      `Editing instructions:\n` +
+      `1. If there is an existing ${productDescription} in the CANVAS photo, erase it and fill the area naturally with the floor/wall behind it.\n` +
+      `2. Insert the ${productLabel} from the REFERENCE into the CANVAS photo.\n` +
+      `3. Place it on the floor in the most natural position, or where the old one was.${dimNote}\n` +
+      `4. Scale it realistically — it must look like it physically belongs in this specific room.\n` +
+      `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+      `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
+      `Output only the final edited image. No text.`,
   });
 
   const raw = await callGemini(parts);
