@@ -202,60 +202,59 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
       <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
         <video ref={videoRef} playsInline muted className="absolute inset-0 w-full h-full object-cover" />
 
+        {/* Top gradient for text readability — matches CapturePage */}
+        <div
+          className="absolute top-0 left-0 right-0 pointer-events-none"
+          style={{ height: "55%", background: "linear-gradient(to bottom, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.45) 45%, rgba(0,0,0,0) 100%)" }}
+        />
+
         {!cameraReady && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-white pointer-events-none">
-            <Loader2 className="h-8 w-8 animate-spin opacity-70" />
-            <span className="text-xs uppercase tracking-widest opacity-60">Starting camera…</span>
+          <div className="absolute inset-0 flex items-center justify-center">
+            <Loader2 className="h-8 w-8 animate-spin text-white/60" />
           </div>
         )}
 
-        <div className="absolute top-0 left-0 right-0 z-10 px-4 pt-safe-top pt-4 pointer-events-none">
-          <div className="pointer-events-auto inline-block">
-            <button
-              onClick={onBack}
-              className="flex items-center gap-1.5 text-xs uppercase tracking-widest text-white/70 hover:text-white"
-            >
-              <ArrowLeft className="h-4 w-4" />Back
-            </button>
-          </div>
-          <div className="mt-2 inline-block ml-4 bg-black/40 backdrop-blur-sm rounded-full px-3 py-1 pointer-events-auto">
-            <span className="text-xs text-white/80">{product.name}</span>
-          </div>
-        </div>
-
         {cameraReady && (
-          <p className="absolute bottom-32 left-0 right-0 text-center text-[0.65rem] uppercase tracking-widest text-white/50 pointer-events-none">
-            Point at your room
-          </p>
+          <div className="absolute inset-0 flex flex-col items-center justify-between py-12 px-6 text-center">
+            {/* Top: logo + title + subtitle */}
+            <div className="flex flex-col items-center gap-4">
+              <Logo />
+              <div>
+                <h1 className="text-2xl font-light text-primary"
+                  style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
+                  Photograph your room
+                </h1>
+                <p className="text-sm text-white/70 mt-1 max-w-xs">
+                  Point at the spot where you'd like to place the furniture
+                </p>
+              </div>
+            </div>
+
+            {/* Bottom: gallery + shutter + spacer */}
+            <div className="flex flex-col items-center gap-4">
+              <div className="flex items-center justify-center gap-8">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="w-14 h-14 rounded-full border-2 border-white/60 bg-white/10 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+                  aria-label="Choose from gallery"
+                >
+                  <ImageIcon className="h-6 w-6 text-white" />
+                </button>
+                <button
+                  onClick={handleCapture}
+                  className="w-20 h-20 rounded-full border-4 border-white bg-white/20 backdrop-blur-sm flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+                  aria-label="Take photo"
+                >
+                  <Camera className="h-9 w-9 text-white" />
+                </button>
+                <div className="w-14 h-14" />
+              </div>
+              <p className="text-xs text-white/50">Natural lighting gives the best results</p>
+            </div>
+          </div>
         )}
 
         <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleGallery} />
-
-        {cameraReady && (
-          <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-8 z-10">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className={cn(
-                "w-14 h-14 rounded-full border-2 border-white/60 bg-white/10 backdrop-blur-sm",
-                "flex items-center justify-center active:scale-95 transition-transform shadow-lg"
-              )}
-              aria-label="Choose from gallery"
-            >
-              <ImageIcon className="h-6 w-6 text-white" />
-            </button>
-            <button
-              onClick={handleCapture}
-              className={cn(
-                "w-20 h-20 rounded-full border-4 border-white bg-white/20 backdrop-blur-sm",
-                "flex items-center justify-center active:scale-95 transition-transform shadow-lg"
-              )}
-              aria-label="Capture"
-            >
-              <Camera className="h-8 w-8 text-white" />
-            </button>
-            <div className="w-14 h-14" />
-          </div>
-        )}
       </div>
     );
   }
