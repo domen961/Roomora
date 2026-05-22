@@ -16,6 +16,20 @@ export default function TryPage() {
   const [result,  setResult]  = useState<string | null>(null);
   const [error,   setError]   = useState("");
 
+  // Auto-resize the embed iframe by reporting content height to parent window
+  useEffect(() => {
+    if (window.parent === window) return;
+    const send = () =>
+      window.parent.postMessage(
+        { type: "roomora:resize", height: document.documentElement.scrollHeight },
+        "*",
+      );
+    const ro = new ResizeObserver(send);
+    ro.observe(document.documentElement);
+    send();
+    return () => ro.disconnect();
+  }, []);
+
   useEffect(() => {
     if (!shopId || !productId) { setError("Invalid link."); setPhase("error"); return; }
 
@@ -47,7 +61,7 @@ export default function TryPage() {
 
   if (phase === "loading") {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="h-64 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
@@ -55,7 +69,7 @@ export default function TryPage() {
 
   if (phase === "error") {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 px-6 text-center">
+      <div className="h-64 flex flex-col items-center justify-center gap-4 px-6 text-center">
         <p className="font-serif text-xl text-primary">Oops</p>
         <p className="text-sm text-muted-foreground max-w-xs">{error}</p>
         <button onClick={handleClose} className="text-xs text-muted-foreground underline">Close</button>

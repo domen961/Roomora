@@ -17,7 +17,7 @@ export default function ResultStep({ result, productName, onReset }: Props) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="flex flex-col">
       <header className="border-b border-border px-6 py-4 flex items-center justify-between">
         <Logo />
         <div className="flex items-center gap-1.5">
