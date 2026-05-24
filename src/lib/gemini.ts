@@ -341,11 +341,13 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Primary product image for the place call.
-  const primaryDataUrl = productImages.length > 0 ? await toDataUrl(productImages[0]) : null;
-  const primaryResized = primaryDataUrl
-    ? await resizeImage(primaryDataUrl, 1024, 1024, 0.92)
-    : null;
+  // Load perspective + front product images for Call 2.
+  const productDataUrls = productImages.length > 0
+    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    : [];
+  const productResized = await Promise.all(
+    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
+  );
 
   // ── CALL 1: ERASE (room only, 1 image) ───────────────────────────────────────
   const erasePrompt =
@@ -368,14 +370,18 @@ export async function placeInRoom(
     // Fall back to original room if erase fails
   }
 
-  // ── CALL 2: PLACE (clean room + 1 product ref, 2 images) ─────────────────────
+  // ── CALL 2: PLACE (erased room + perspective + front, 3 images) ──────────────
+  const numRefs = productResized.length;
+  const refLabel = numRefs >= 2 ? "(second and third images)" : "(second image)";
+  const imgWord  = numRefs >= 2 ? "three" : "two";
+
   const placePrompt =
-    `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
-    `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
+    `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
+    `CANVAS (first image): A real photograph of a room with no furniture. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
-    `Use it only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
-    `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
+    `${productLabel} REFERENCE ${refLabel}: 3D renders showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
+    `Use them only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
+    `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `2. Place it on the floor in the most natural central position.${dimNote}\n` +
@@ -387,7 +393,7 @@ export async function placeInRoom(
   const parts: unknown[] = [
     { text: placePrompt },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
-    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
+    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
   ];
 
   const raw = await callGemini(parts);
