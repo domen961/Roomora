@@ -377,18 +377,19 @@ export async function placeInRoom(
 
   const placePrompt =
     `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
-    `CANVAS (first image): A real photograph of a room with no furniture. This is what you must edit.\n` +
-    `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: 3D renders showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
+    `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
+    `Do not change any existing room content — walls, floor, ceiling, windows must stay exactly as they are.\n\n` +
+    `${productLabel} REFERENCE ${refLabel}: Real product photos showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `Closely replicate every visual detail visible in the renders — cushion shape, tufting, seams, fabric texture, leg style, and exact proportions.\n` +
-    `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
+    `Closely replicate every visual detail — shape, material, texture, colour, leg style, and proportions.\n` +
+    `Do NOT include any background or environment from the reference photos in the output.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `2. Place it on the floor in the most natural central position.${dimNote}\n` +
-    `3. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
-    `4. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `5. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
+    `3. Use real-world scale — if the ${productLabel.toLowerCase()} doesn't fully fit in the frame at that scale, let it be cropped at the edges. Never shrink it just to make it fit.\n` +
+    `4. Match its lighting and colour temperature to the room. Cast a realistic shadow on the floor that follows the direction and softness of existing shadows in the room.\n` +
+    `5. The result must look like a single real photograph — not a composite. Blend the edges naturally into the scene. Match the photo's grain, ambient light, and colour cast.\n` +
+    `6. Keep the exact same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
