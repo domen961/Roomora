@@ -227,7 +227,7 @@ export default function CapturePage() {
             {isDirectMode ? "Placing the product in your room…" : "Sending photo…"}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {isDirectMode ? "Usually 30–60 seconds" : "Uploading to server"}
+            {isDirectMode ? "Usually 60–90 seconds" : "Uploading to server"}
           </p>
         </div>
       </div>

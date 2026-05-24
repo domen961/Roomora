@@ -359,39 +359,53 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Build a single composite reference image (perspective + front side-by-side).
-  // This keeps the total at exactly 2 images (room + composite) which is the
-  // only count where Gemini reliably performs the erase+place in one call.
-  const refDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
-    : [];
-  const refResized = await Promise.all(
-    refDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
-  );
-  const compositeRef = refResized.length >= 2
-    ? await compositeSideBySide(refResized[0], refResized[1])
-    : refResized[0] ?? null;
+  // Primary product image for the place call.
+  const primaryDataUrl = productImages.length > 0 ? await toDataUrl(productImages[0]) : null;
+  const primaryResized = primaryDataUrl
+    ? await resizeImage(primaryDataUrl, 1024, 1024, 0.92)
+    : null;
 
-  const fullPrompt =
+  // ── CALL 1: ERASE (room only, 1 image) ───────────────────────────────────────
+  const erasePrompt =
+    `You are a photo editor. You will receive one image.\n\n` +
+    `CANVAS: A real photograph of a room.\n\n` +
+    `Task: Find and completely erase any ${productLabel.toLowerCase()} or furniture of the same type — ` +
+    `regardless of style, colour, or material, and even if covered or obscured by other objects. ` +
+    `Fill the erased area naturally with the floor and wall visible in the surrounding areas. ` +
+    `Do not change anything else in the room.\n\n` +
+    `Output only the edited photo. No text.`;
+
+  let canvasDataUrl = roomResized;
+  try {
+    const erased = await callGemini([
+      { text: erasePrompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+    ]);
+    canvasDataUrl = await resizeImage(erased, 1536, 1536, 0.92);
+  } catch {
+    // Fall back to original room if erase fails
+  }
+
+  // ── CALL 2: PLACE (clean room + 1 product ref, 2 images) ─────────────────────
+  const placePrompt =
     `You are a photo compositor. You will receive two images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
-    `${productLabel} REFERENCE (second image): Two 3D renders of the exact ${productLabel.toLowerCase()} shown side-by-side (perspective view on the left, front view on the right).\n` +
-    `Use both views to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
-    `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
+    `${productLabel} REFERENCE (second image): A 3D render showing the exact ${productLabel.toLowerCase()} to insert.\n` +
+    `Use it only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
+    `Do NOT include any background, floor, or environment from this render in the output.\n\n` +
     `Editing instructions:\n` +
-    `1. If there is an existing ${productLabel.toLowerCase()} or furniture of the same type in the CANVAS photo, erase it completely — regardless of its style, colour, or material, and even if it is covered or obscured. Fill the area naturally with the floor and wall behind it.\n` +
-    `2. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
-    `3. Place it on the floor in the most natural central position, or where the old ${productLabel.toLowerCase()} was.${dimNote}\n` +
-    `4. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
-    `5. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
-    `6. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
+    `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
+    `2. Place it on the floor in the most natural central position.${dimNote}\n` +
+    `3. Scale it realistically — the ${productLabel.toLowerCase()} must look like it physically belongs in this specific room.\n` +
+    `4. Match its lighting and shading to the room's light sources. Add a soft drop shadow beneath it.\n` +
+    `5. The output image must be the same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
   const parts: unknown[] = [
-    { text: fullPrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ...(compositeRef ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(compositeRef) } }] : []),
+    { text: placePrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
+    ...(primaryResized ? [{ inlineData: { mimeType: "image/jpeg", data: stripPrefix(primaryResized) } }] : []),
   ];
 
   const raw = await callGemini(parts);
