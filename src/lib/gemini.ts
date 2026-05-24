@@ -379,10 +379,10 @@ export async function placeInRoom(
     `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
     `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
     `Do not change any existing room content — walls, floor, ceiling, windows must stay exactly as they are.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: Real product photos showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
+    `${productLabel} REFERENCE ${refLabel}: Reference images showing the exact ${productLabel.toLowerCase()} to insert, from different angles.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `Closely replicate every visual detail — shape, material, texture, colour, leg style, and proportions.\n` +
-    `Do NOT include any background or environment from the reference photos in the output.\n\n` +
+    `Faithfully replicate every visual detail from the reference — shape, material, texture, colour, leg style, and exact proportions. Do not substitute with a generic version.\n` +
+    `Do NOT include any background or environment from the reference images in the output.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `2. Place it on the floor in the most natural central position.${dimNote}\n` +
