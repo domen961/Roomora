@@ -1,16 +1,15 @@
-import type { VercelRequest, VercelResponse } from "@vercel/node";
-
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const config = {
   api: { bodyParser: { sizeLimit: "20mb" } },
 };
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
 
   const { images, prompt } = req.body as { images: string[]; prompt: string };
   if (!images?.length || !prompt) return res.status(400).json({ error: "Missing images or prompt" });
 
-  const key = process.env.VITE_OPENAI_API_KEY;
+  const key = (process as any).env.VITE_OPENAI_API_KEY;
   if (!key) return res.status(500).json({ error: "VITE_OPENAI_API_KEY not set" });
 
   const form = new FormData();
