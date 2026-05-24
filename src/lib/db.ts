@@ -66,10 +66,8 @@ export function dbRowToProduct(row: DBProduct): Product {
     id:          row.id,
     name:        row.name,
     description: row.description,
-    images:      [row.image_0, row.image_1, row.thumbnail]
-                   .filter((url, i, arr): url is string =>
-                     !!url && url !== "" && arr.indexOf(url) === i,   // deduplicate
-                   ),
+    images:      [row.image_0, row.image_1]
+                   .filter((url): url is string => !!url && url !== ""),
     thumbnail:   row.thumbnail ?? "",
     length_cm:   row.length_cm  ?? null,
     width_cm:    row.width_cm   ?? null,
@@ -98,10 +96,9 @@ export async function saveProduct(
   images:      string[],         // [image_0, image_1, thumbnail] — data URLs or http URLs
   dimensions?: ProductDimensions,
 ): Promise<void> {
-  const [url0, url1, urlThumb] = await Promise.all([
+  const [url0, url1] = await Promise.all([
     uploadSnapshot(merchantId, id, "perspective", images[0]),
     uploadSnapshot(merchantId, id, "front",       images[1] ?? images[0]),
-    uploadSnapshot(merchantId, id, "side",        images[2] ?? images[0]),
   ]);
 
   const { error } = await supabase.from("products").insert({
@@ -111,7 +108,7 @@ export async function saveProduct(
     description,
     image_0:   url0,
     image_1:   url1,
-    thumbnail: urlThumb,
+    thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
     height_cm: dimensions?.height_cm ?? null,
@@ -135,10 +132,9 @@ export async function updateProduct(
       ? Promise.resolve(src)
       : uploadSnapshot(merchantId, productId, angle, src);
 
-  const [url0, url1, urlThumb] = await Promise.all([
+  const [url0, url1] = await Promise.all([
     uploadOrReuse(images[0], "perspective"),
     uploadOrReuse(images[1] ?? images[0], "front"),
-    uploadOrReuse(images[2] ?? images[0], "side"),
   ]);
 
   const { error } = await supabase.from("products").update({
@@ -146,7 +142,7 @@ export async function updateProduct(
     description,
     image_0:   url0,
     image_1:   url1,
-    thumbnail: urlThumb,
+    thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
     height_cm: dimensions?.height_cm ?? null,
@@ -163,7 +159,6 @@ export async function deleteProduct(
   await supabase.storage.from("product-images").remove([
     `${merchantId}/${productId}/perspective.jpg`,
     `${merchantId}/${productId}/front.jpg`,
-    `${merchantId}/${productId}/side.jpg`,
   ]);
 
   const { error } = await supabase
