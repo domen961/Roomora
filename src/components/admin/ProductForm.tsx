@@ -1,29 +1,23 @@
 import { useRef, useState } from "react";
 import {
-  Loader2, UploadCloud, CheckCircle, AlertCircle,
-  X, ImagePlus, Link, Plus, Sparkles,
+  Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { BabylonViewer } from "@/hooks/useBabylonViewer";
 import { saveProduct, updateProduct } from "@/lib/db";
 import type { Product } from "@/lib/products";
 import { extractProductData } from "@/lib/gemini";
 
 interface Props {
-  viewer:          BabylonViewer;
   merchantId:      string;
-  initialProduct?: Product;   // when provided, form is in edit mode
+  initialProduct?: Product;
   onSave:          () => void;
   onCancel:        () => void;
 }
 
-type Phase3D = "idle" | "processing" | "ready" | "error";
-
-export default function ProductForm({ viewer, merchantId, initialProduct, onSave, onCancel }: Props) {
+export default function ProductForm({ merchantId, initialProduct, onSave, onCancel }: Props) {
   const isEditing = !!initialProduct;
 
-  // Core fields — pre-filled from initialProduct when editing
   const [name,        setName]        = useState(initialProduct?.name        ?? "");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const [lengthCm,    setLengthCm]    = useState(initialProduct?.length_cm   != null ? String(initialProduct.length_cm) : "");
@@ -37,24 +31,17 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
   const [extractedImages, setExtractedImages] = useState<string[]>([]);
   const [addingImageIdx,  setAddingImageIdx]  = useState<number | null>(null);
 
-  // Photos (primary) — pre-filled with existing Supabase URLs when editing
+  // Photos — pre-filled with existing Supabase URLs when editing
   const [photos,    setPhotos]    = useState<string[]>(initialProduct?.images.filter(Boolean) ?? []);
   const [photoDrag, setPhotoDrag] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
-
-  // 3D model (optional)
-  const [phase3D,  setPhase3D]  = useState<Phase3D>("idle");
-  const [error3D,  setError3D]  = useState("");
-  const [thumb3D,  setThumb3D]  = useState("");
-  const snapshots3DRef = useRef<string[]>([]);
-  const modelInputRef  = useRef<HTMLInputElement>(null);
 
   // Save
   const [saving,    setSaving]    = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  const canSave   = name.trim().length > 0 && (photos.length > 0 || phase3D === "ready");
-  const isBusy    = importing || saving || addingImageIdx !== null;
+  const canSave = name.trim().length > 0 && photos.length > 0;
+  const isBusy  = importing || saving || addingImageIdx !== null;
 
   // ── URL import ──────────────────────────────────────────────────────────────
   const handleImport = async () => {
@@ -77,7 +64,6 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
     }
   };
 
-  // Proxy-download an extracted image URL and add to photos as data URL
   const handleAddExtractedImage = async (url: string, idx: number) => {
     if (photos.length >= 3 || addingImageIdx !== null) return;
     setAddingImageIdx(idx);
@@ -116,52 +102,13 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
     addPhotoFiles(Array.from(e.dataTransfer.files));
   };
 
-  // ── 3D model helpers ────────────────────────────────────────────────────────
-  const handle3DFile = async (file: File) => {
-    if (!viewer.isReady) {
-      setError3D("3D engine unavailable in this browser — use product photos instead.");
-      setPhase3D("error");
-      return;
-    }
-    const ext = file.name.split(".").pop()?.toLowerCase();
-    if (!ext || !["glb", "gltf", "obj"].includes(ext)) {
-      setError3D("Unsupported format. Use GLB, GLTF, or OBJ.");
-      setPhase3D("error");
-      return;
-    }
-    setPhase3D("processing");
-    setError3D("");
-    try {
-      const snaps = await viewer.processModel(file);
-      snapshots3DRef.current = snaps;
-      setThumb3D(snaps[2]);
-      setPhase3D("ready");
-    } catch (err) {
-      setError3D(err instanceof Error ? err.message : String(err));
-      setPhase3D("error");
-    }
-  };
-
-  const handle3DDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file) handle3DFile(file);
-  };
-
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!canSave || isBusy) return;
     setSaving(true);
     setSaveError("");
     try {
-      const s = snapshots3DRef.current;
-
-      // Photos always win over 3D snapshots
-      const finalImages = [
-        photos[0] ?? s[0],
-        photos[1] ?? s[1] ?? photos[0] ?? s[0],
-        photos[2] ?? s[2] ?? photos[0] ?? s[0],
-      ].filter(Boolean) as string[];
+      const finalImages = photos.filter(Boolean);
 
       const dims = {
         length_cm: lengthCm ? parseFloat(lengthCm) : null,
@@ -170,7 +117,6 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
       };
 
       if (isEditing && initialProduct) {
-        // Update — keeps the same product ID
         await updateProduct(
           merchantId,
           initialProduct.id,
@@ -180,7 +126,6 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
           dims,
         );
       } else {
-        // Create — generate a new ID from name slug + timestamp
         const slug = name.trim().toLowerCase()
           .replace(/[ąà]/g, "a").replace(/ć/g, "c").replace(/[ęè]/g, "e")
           .replace(/ł/g, "l").replace(/ń/g, "n").replace(/[óò]/g, "o")
@@ -242,7 +187,6 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
           <p className="text-xs text-destructive">{importError}</p>
         )}
 
-        {/* Extracted images */}
         {extractedImages.length > 0 && (
           <div className="flex flex-col gap-2 mt-1">
             <p className="text-xs text-muted-foreground">
@@ -355,7 +299,7 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
             Product photos
           </label>
           <span className="text-xs text-muted-foreground/60">
-            {photos.length}/3 — perspective · front · material close-up
+            {photos.length}/3 — perspective · front · close-up
           </span>
         </div>
 
@@ -418,81 +362,6 @@ export default function ProductForm({ viewer, merchantId, initialProduct, onSave
           className="hidden"
           onChange={(e) => {
             if (e.target.files) addPhotoFiles(Array.from(e.target.files));
-            e.target.value = "";
-          }}
-        />
-      </div>
-
-      {/* ── 3D model (optional) ── */}
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs uppercase tracking-widest text-muted-foreground">3D model</label>
-          <span className="text-xs text-muted-foreground/60">Optional — generates extra angle views</span>
-        </div>
-
-        <div
-          onDrop={handle3DDrop}
-          onDragOver={(e) => e.preventDefault()}
-          onClick={() =>
-            (phase3D === "idle" || phase3D === "error" || phase3D === "ready")
-              ? modelInputRef.current?.click()
-              : null
-          }
-          className={cn(
-            "rounded-lg border-2 border-dashed p-5 flex flex-col items-center gap-3 transition-colors",
-            phase3D === "idle" || phase3D === "error"
-              ? "border-border hover:border-primary/50 cursor-pointer"
-              : "border-border",
-            phase3D === "ready" && "border-primary/40 bg-primary/5",
-          )}
-        >
-          {phase3D === "idle" && (
-            <>
-              <UploadCloud className="h-7 w-7 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">Drop GLB, GLTF, or OBJ</p>
-            </>
-          )}
-          {phase3D === "processing" && (
-            <>
-              <Loader2 className="h-7 w-7 animate-spin text-primary" />
-              <p className="text-sm text-muted-foreground">Processing 3D model…</p>
-              <p className="text-xs text-muted-foreground opacity-60">Generating snapshots from 4 angles</p>
-            </>
-          )}
-          {phase3D === "ready" && (
-            <div className="flex items-center gap-4 w-full">
-              <img src={thumb3D} alt="3D preview" className="h-14 w-14 rounded-md object-cover border border-border flex-shrink-0" />
-              <div className="flex-1">
-                <div className="flex items-center gap-2 mb-1">
-                  <CheckCircle className="h-4 w-4 text-primary flex-shrink-0" />
-                  <span className="text-sm font-medium">Model processed — 4 snapshots ready</span>
-                </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); modelInputRef.current?.click(); }}
-                  className="text-xs text-muted-foreground underline hover:text-foreground"
-                >
-                  Replace model
-                </button>
-              </div>
-            </div>
-          )}
-          {phase3D === "error" && (
-            <>
-              <AlertCircle className="h-7 w-7 text-destructive" />
-              <p className="text-sm text-destructive text-center">{error3D}</p>
-              <p className="text-xs text-muted-foreground">Click to try again</p>
-            </>
-          )}
-        </div>
-
-        <input
-          ref={modelInputRef}
-          type="file"
-          accept=".glb,.gltf,.obj"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f) handle3DFile(f);
             e.target.value = "";
           }}
         />

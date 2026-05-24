@@ -1,14 +1,12 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Plus, LogOut, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
-import HiddenCanvas from "./HiddenCanvas";
 import ProductForm from "./ProductForm";
 import CatalogGrid from "./CatalogGrid";
 import EmbedSetup from "./EmbedSetup";
 import { useAuth } from "@/hooks/useAuth";
-import { useBabylonViewer } from "@/hooks/useBabylonViewer";
 import { getProducts, deleteProduct, getAllMerchants } from "@/lib/db";
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/lib/products";
@@ -23,9 +21,6 @@ export default function AdminPage() {
   useEffect(() => {
     if (!loading && !user) navigate("/login");
   }, [loading, user, navigate]);
-
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const viewer    = useBabylonViewer(canvasRef);
 
   const [tab,              setTab]              = useState<Tab>("catalog");
   const [view,             setView]             = useState<View>("catalog");
@@ -80,8 +75,6 @@ export default function AdminPage() {
 
   return (
     <>
-      <HiddenCanvas ref={canvasRef} />
-
       <div className="min-h-screen flex flex-col">
 
         {/* ── Header ── */}
@@ -163,7 +156,6 @@ export default function AdminPage() {
                 </h2>
                 <ProductForm
                   key={editingProduct?.id ?? "new"}
-                  viewer={viewer}
                   merchantId={activeMerchantId}
                   initialProduct={view === "edit" ? editingProduct ?? undefined : undefined}
                   onSave={backToCatalog}
