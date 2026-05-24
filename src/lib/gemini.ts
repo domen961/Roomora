@@ -380,7 +380,8 @@ export async function placeInRoom(
     `CANVAS (first image): A real photograph of a room with no furniture. This is what you must edit.\n` +
     `DO NOT alter any room content — walls, floor, ceiling, windows must all stay pixel-perfect.\n\n` +
     `${productLabel} REFERENCE ${refLabel}: 3D renders showing the exact ${productLabel.toLowerCase()} from different angles.\n` +
-    `Use them only to copy the ${productLabel.toLowerCase()}'s exact shape, colour, material detail, and proportions.\n` +
+    (productDescription ? `Product details: ${productDescription}\n` : ``) +
+    `Closely replicate every visual detail visible in the renders — cushion shape, tufting, seams, fabric texture, leg style, and exact proportions.\n` +
     `Do NOT include any background, floor, or environment from these renders in the output.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
