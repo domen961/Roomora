@@ -256,9 +256,9 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
 
       {/* ── Description ── */}
       <div className="flex flex-col gap-2">
-        <label className="text-xs uppercase tracking-widest text-muted-foreground">AI description</label>
+        <label className="text-xs uppercase tracking-widest text-muted-foreground">Materials &amp; finish</label>
         <textarea
-          placeholder="e.g. 'extendable dining table, sintered stone top in Calacatta Black, fluted MDF legs in matte black finish'"
+          placeholder="e.g. 'Sintered stone top with a high-gloss Calacatta Black finish; fluted MDF base in matte caramel lacquer.'"
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={3}
