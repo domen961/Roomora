@@ -1,7 +1,5 @@
 const GEMINI_MODEL       = "gemini-2.5-flash-image";
 const GEMINI_TEXT_MODEL  = "gemini-2.5-flash";
-const OPENAI_IMAGE_MODEL = "gpt-image-1";
-
 function getEndpoint() {
   const key = import.meta.env.VITE_GEMINI_API_KEY as string;
   if (!key) throw new Error("VITE_GEMINI_API_KEY is not set");
@@ -10,39 +8,18 @@ function getEndpoint() {
 
 const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
 
-// ── OpenAI GPT-Image-1 ────────────────────────────────────────────────────────
-function dataUrlToBlob(dataUrl: string): Blob {
-  const parts    = dataUrl.split(",");
-  const mimeType = parts[0].match(/:(.*?);/)?.[1] ?? "image/jpeg";
-  const binary   = atob(parts[1]);
-  const buffer   = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
-  return new Blob([buffer], { type: mimeType });
-}
-
+// ── OpenAI GPT-Image-1 (via /api/openai-image proxy) ─────────────────────────
 async function callOpenAIEdit(images: string[], prompt: string): Promise<string> {
-  const key = import.meta.env.VITE_OPENAI_API_KEY as string;
-  if (!key) throw new Error("VITE_OPENAI_API_KEY is not set");
-
-  const form = new FormData();
-  form.append("model",           OPENAI_IMAGE_MODEL);
-  form.append("prompt",          prompt);
-  form.append("response_format", "b64_json");
-  form.append("size",            "1024x1024");
-  images.forEach((url, i) =>
-    form.append("image[]", dataUrlToBlob(url), `img_${i}.jpg`),
-  );
-
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 120_000);
   try {
-    const res = await fetch("https://api.openai.com/v1/images/edits", {
+    const res = await fetch("/api/openai-image", {
       method:  "POST",
-      headers: { Authorization: `Bearer ${key}` },
-      body:    form,
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ images, prompt }),
       signal:  controller.signal,
     });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    if (!res.ok) throw new Error(`OpenAI proxy ${res.status}: ${await res.text()}`);
     const data = await res.json();
     const b64  = data.data?.[0]?.b64_json;
     if (!b64) throw new Error("No image returned by OpenAI");
