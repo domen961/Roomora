@@ -343,7 +343,7 @@ export async function placeInRoom(
 
   // Load perspective + front product images for Call 2.
   const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    ? await Promise.all(productImages.slice(0, 3).map(toDataUrl))
     : [];
   const productResized = await Promise.all(
     productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
@@ -370,10 +370,12 @@ export async function placeInRoom(
     // Fall back to original room if erase fails
   }
 
-  // ── CALL 2: PLACE (erased room + perspective + front, 3 images) ──────────────
+  // ── CALL 2: PLACE (erased room + up to 3 product reference photos) ───────────
   const numRefs = productResized.length;
-  const refLabel = numRefs >= 2 ? "(second and third images)" : "(second image)";
-  const imgWord  = numRefs >= 2 ? "three" : "two";
+  const refLabel = numRefs >= 3
+    ? "(second, third, and fourth images)"
+    : numRefs === 2 ? "(second and third images)" : "(second image)";
+  const imgWord = numRefs >= 3 ? "four" : numRefs === 2 ? "three" : "two";
 
   const placePrompt =
     `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
