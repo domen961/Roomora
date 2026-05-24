@@ -8,33 +8,6 @@ function getEndpoint() {
 
 const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
 
-// ── OpenAI GPT-Image-1 (via /api/openai-image proxy) ─────────────────────────
-async function callOpenAIEdit(images: string[], prompt: string): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 120_000);
-  try {
-    const res = await fetch("/api/openai-image", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ images, prompt }),
-      signal:  controller.signal,
-    });
-    if (!res.ok) throw new Error(`OpenAI proxy ${res.status}: ${await res.text()}`);
-    const data = await res.json();
-    const item = data.data?.[0];
-    if (!item) throw new Error("No image returned by OpenAI");
-    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
-    if (item.url)      return item.url as string;
-    throw new Error("No image data in OpenAI response");
-  } catch (err) {
-    if ((err as Error).name === "AbortError")
-      throw new Error("OpenAI generation timed out — please try again");
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -417,9 +390,12 @@ export async function placeInRoom(
     `6. Keep the exact same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
-  const raw = await callOpenAIEdit(
-    [canvasDataUrl, ...productResized],
-    placePrompt,
-  );
+  const parts: unknown[] = [
+    { text: placePrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
+    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+  ];
+
+  const raw = await callGemini(parts);
   return cropToRatio(raw, origW, origH);
 }
