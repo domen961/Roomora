@@ -377,7 +377,7 @@ export async function placeInRoom(
 
   const placePrompt =
     `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
-    `CANVAS (first image): A real photograph of a room. This is what you must edit. Do not change anything in it.\n\n` +
+    `CANVAS (first image): A real photograph of a room. This is the scene you must edit — add the product into it while keeping all background elements (walls, floor, ceiling, windows) exactly as they are.\n\n` +
     `${productLabel} REFERENCE ${refLabel}: Images of the exact ${productLabel.toLowerCase()} to insert.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `CRITICAL: The ${productLabel.toLowerCase()} in your output must look identical to the one in the REFERENCE — same exact shape, colour, material, texture, stitching, leg style, and proportions. Do not redesign it or replace it with a different model.\n` +
