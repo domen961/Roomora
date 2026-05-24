@@ -17,10 +17,9 @@ export default async function handler(req: any, res: any) {
   if (!key) return res.status(500).json({ error: "VITE_OPENAI_API_KEY not set" });
 
   const form = new FormData();
-  form.append("model",           "gpt-image-1");
-  form.append("prompt",          prompt);
-  form.append("response_format", "b64_json");
-  form.append("size",            "1024x1024");
+  form.append("model",  "gpt-image-1");
+  form.append("prompt", prompt);
+  form.append("size",   "1024x1024");
 
   for (let i = 0; i < images.length; i++) {
     const [header, b64] = images[i].split(",");

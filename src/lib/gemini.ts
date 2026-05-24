@@ -21,9 +21,11 @@ async function callOpenAIEdit(images: string[], prompt: string): Promise<string>
     });
     if (!res.ok) throw new Error(`OpenAI proxy ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    const b64  = data.data?.[0]?.b64_json;
-    if (!b64) throw new Error("No image returned by OpenAI");
-    return `data:image/png;base64,${b64}`;
+    const item = data.data?.[0];
+    if (!item) throw new Error("No image returned by OpenAI");
+    if (item.b64_json) return `data:image/png;base64,${item.b64_json}`;
+    if (item.url)      return item.url as string;
+    throw new Error("No image data in OpenAI response");
   } catch (err) {
     if ((err as Error).name === "AbortError")
       throw new Error("OpenAI generation timed out — please try again");
