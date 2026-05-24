@@ -1,5 +1,6 @@
 const GEMINI_MODEL       = "gemini-2.5-flash-image";
-const GEMINI_TEXT_MODEL = "gemini-2.5-flash";
+const GEMINI_TEXT_MODEL  = "gemini-2.5-flash";
+const OPENAI_IMAGE_MODEL = "gpt-image-1";
 
 function getEndpoint() {
   const key = import.meta.env.VITE_GEMINI_API_KEY as string;
@@ -8,6 +9,52 @@ function getEndpoint() {
 }
 
 const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
+
+// ── OpenAI GPT-Image-1 ────────────────────────────────────────────────────────
+function dataUrlToBlob(dataUrl: string): Blob {
+  const parts    = dataUrl.split(",");
+  const mimeType = parts[0].match(/:(.*?);/)?.[1] ?? "image/jpeg";
+  const binary   = atob(parts[1]);
+  const buffer   = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) buffer[i] = binary.charCodeAt(i);
+  return new Blob([buffer], { type: mimeType });
+}
+
+async function callOpenAIEdit(images: string[], prompt: string): Promise<string> {
+  const key = import.meta.env.VITE_OPENAI_API_KEY as string;
+  if (!key) throw new Error("VITE_OPENAI_API_KEY is not set");
+
+  const form = new FormData();
+  form.append("model",           OPENAI_IMAGE_MODEL);
+  form.append("prompt",          prompt);
+  form.append("response_format", "b64_json");
+  form.append("size",            "1024x1024");
+  images.forEach((url, i) =>
+    form.append("image[]", dataUrlToBlob(url), `img_${i}.jpg`),
+  );
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 120_000);
+  try {
+    const res = await fetch("https://api.openai.com/v1/images/edits", {
+      method:  "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body:    form,
+      signal:  controller.signal,
+    });
+    if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    const b64  = data.data?.[0]?.b64_json;
+    if (!b64) throw new Error("No image returned by OpenAI");
+    return `data:image/png;base64,${b64}`;
+  } catch (err) {
+    if ((err as Error).name === "AbortError")
+      throw new Error("OpenAI generation timed out — please try again");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -391,12 +438,9 @@ export async function placeInRoom(
     `6. Keep the exact same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
-  const parts: unknown[] = [
-    { text: placePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
-    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
-  ];
-
-  const raw = await callGemini(parts);
+  const raw = await callOpenAIEdit(
+    [canvasDataUrl, ...productResized],
+    placePrompt,
+  );
   return cropToRatio(raw, origW, origH);
 }
