@@ -33,24 +33,6 @@ async function toDataUrl(src: string): Promise<string> {
   return `data:${mimeType};base64,${data}`;
 }
 
-/** Stitches two images side-by-side into one JPEG. */
-async function compositeSideBySide(a: string, b: string): Promise<string> {
-  try {
-    const [i1, i2] = await Promise.all([loadImage(a), loadImage(b)]);
-    const h = Math.max(i1.height, i2.height);
-    const canvas = document.createElement("canvas");
-    canvas.width = i1.width + i2.width;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, canvas.width, h);
-    ctx.drawImage(i1, 0, Math.round((h - i1.height) / 2));
-    ctx.drawImage(i2, i1.width, Math.round((h - i2.height) / 2));
-    return canvas.toDataURL("image/jpeg", 0.9);
-  } catch {
-    return a; // fall back to first image
-  }
-}
 
 async function cropToRatio(src: string, targetW: number, targetH: number): Promise<string> {
   try {
