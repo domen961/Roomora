@@ -380,7 +380,7 @@ export async function placeInRoom(
     `CANVAS (first image): A real photograph of a room. This is the scene you must edit — add the product into it while keeping all background elements (walls, floor, ceiling, windows) exactly as they are.\n\n` +
     `${productLabel} REFERENCE ${refLabel}: Images of the exact ${productLabel.toLowerCase()} to insert.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `CRITICAL: The ${productLabel.toLowerCase()} in your output must look identical to the one in the REFERENCE — same exact shape, colour, material, texture, stitching, leg style, and proportions. Do not redesign it or replace it with a different model.\n` +
+    `CRITICAL: The ${productLabel.toLowerCase()} in your output must look identical to the one in the REFERENCE — same exact shape, colour, material, texture, surface finish (glossy or matte), stitching, leg style, and proportions. Do not redesign it or replace it with a different model.\n` +
     `Do NOT carry over any background or environment from the reference images.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
