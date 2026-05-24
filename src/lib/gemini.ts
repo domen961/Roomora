@@ -253,7 +253,7 @@ export async function extractProductData(
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "name": "full product name",
-  "description": "concise visual description for AI image generation, max 40 words. Include only concrete details: shape, material, finish, color, leg style. Skip anything vague or unknown — do not write 'unspecified'. Example: 'oval extendable dining table, sintered stone top in Calacatta Black, fluted MDF legs in matte black'.",
+  "description": "one sentence describing only the materials and surface finishes of this product — the information that cannot be seen from photos alone. Focus on: what material each part is made of, and whether the finish is glossy, matte, satin, velvet, bouclé, lacquered, oiled, etc. Do not describe shape, silhouette, colour, or dimensions — those are visible in photos. Skip anything unknown. Example: 'Sintered stone top with a high-gloss Calacatta Black finish; fluted MDF base in matte caramel lacquer.'",
   "length_cm": <number or null>,
   "width_cm": <number or null>,
   "height_cm": <number or null>,
