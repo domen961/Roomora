@@ -13,7 +13,7 @@ export default async function handler(req: any, res: any) {
   if (!images?.length || !prompt)
     return res.status(400).json({ error: "Missing images or prompt" });
 
-  const key = process.env.VITE_OPENAI_API_KEY;
+  const key = process.env.VITE_OPENAI_API_KEY?.trim();
   if (!key) return res.status(500).json({ error: "VITE_OPENAI_API_KEY not set" });
 
   const form = new FormData();
