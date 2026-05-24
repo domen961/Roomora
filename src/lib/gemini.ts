@@ -377,18 +377,17 @@ export async function placeInRoom(
 
   const placePrompt =
     `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
-    `CANVAS (first image): A real photograph of a room. This is what you must edit.\n` +
-    `Do not change any existing room content — walls, floor, ceiling, windows must stay exactly as they are.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: Reference images showing the exact ${productLabel.toLowerCase()} to insert, from different angles.\n` +
+    `CANVAS (first image): A real photograph of a room. This is what you must edit. Do not change anything in it.\n\n` +
+    `${productLabel} REFERENCE ${refLabel}: Images of the exact ${productLabel.toLowerCase()} to insert.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `Faithfully replicate every visual detail from the reference — shape, material, texture, colour, leg style, and exact proportions. Do not substitute with a generic version.\n` +
-    `Do NOT include any background or environment from the reference images in the output.\n\n` +
+    `CRITICAL: The ${productLabel.toLowerCase()} in your output must look identical to the one in the REFERENCE — same exact shape, colour, material, texture, stitching, leg style, and proportions. Do not redesign it or replace it with a different model.\n` +
+    `Do NOT carry over any background or environment from the reference images.\n\n` +
     `Editing instructions:\n` +
     `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
     `2. Place it on the floor in the most natural central position.${dimNote}\n` +
-    `3. Use real-world scale — if the ${productLabel.toLowerCase()} doesn't fully fit in the frame at that scale, let it be cropped at the edges. Never shrink it just to make it fit.\n` +
-    `4. Match its lighting and colour temperature to the room. Cast a realistic shadow on the floor that follows the direction and softness of existing shadows in the room.\n` +
-    `5. The result must look like a single real photograph — not a composite. Blend the edges naturally into the scene. Match the photo's grain, ambient light, and colour cast.\n` +
+    `3. Use real-world scale — if it doesn't fully fit in the frame at that scale, let it be cropped at the edges. Never shrink it just to make it fit.\n` +
+    `4. Light it to match the room's light sources. Cast a realistic shadow on the floor following the direction and softness of other shadows visible in the room.\n` +
+    `5. Blend the edges of the ${productLabel.toLowerCase()} naturally into the scene so the result looks like a single photograph taken in this room.\n` +
     `6. Keep the exact same framing, crop, and orientation as the CANVAS photo.\n\n` +
     `Output only the final edited image. No text.`;
 
