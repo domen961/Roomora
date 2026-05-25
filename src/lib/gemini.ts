@@ -1,5 +1,4 @@
-const GEMINI_MODEL       = "gemini-2.5-flash-image";
-const GEMINI_TEXT_MODEL  = "gemini-2.5-flash";
+const GEMINI_MODEL = "gemini-2.5-flash-image";
 function getEndpoint() {
   const key = import.meta.env.VITE_GEMINI_API_KEY as string;
   if (!key) throw new Error("VITE_GEMINI_API_KEY is not set");
@@ -271,8 +270,6 @@ export interface ExtractedProductData {
 export async function extractProductData(
   pageUrl: string,
 ): Promise<ExtractedProductData> {
-  const key = import.meta.env.VITE_GEMINI_API_KEY as string;
-  if (!key) throw new Error("VITE_GEMINI_API_KEY is not set");
 
   // 1. Fetch page HTML through our CORS proxy
   const scrapeRes = await fetch(
@@ -415,14 +412,10 @@ Page text:
 ${pageText}`;
 
   const callTextModel = async () => {
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TEXT_MODEL}:generateContent?key=${key}`;
-    return fetch(endpoint, {
+    return fetch("/api/gemini-text", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents:         [{ parts: [{ text: prompt }] }],
-        generationConfig: { responseMimeType: "application/json" },
-      }),
+      body: JSON.stringify({ prompt }),
     });
   };
 
@@ -439,7 +432,7 @@ ${pageText}`;
   }
 
   const geminiData = await geminiRes.json();
-  const rawText    = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+  const rawText    = geminiData?.text ?? "{}";
   const json       = JSON.parse(rawText);
 
   return {
