@@ -56,24 +56,29 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
             <Share2 className="h-5 w-5 text-white" />
           </button>
         </div>
-        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
+        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-3 px-6">
           <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
+          {/* Primary actions: Retry + Download */}
           <div className="flex gap-3 w-full max-w-xs">
             <button onClick={onReset}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
               <RotateCcw className="h-4 w-4" />Retry
             </button>
-            {onRegenerate && (
-              <button onClick={onRegenerate}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
-                <RefreshCw className="h-4 w-4" />Again
-              </button>
-            )}
             <button onClick={handleDownload}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
               <Download className="h-4 w-4" />Download
             </button>
           </div>
+          {/* Regenerate — separated with hint */}
+          {onRegenerate && (
+            <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
+              <p className="text-white/45 text-xs">Result looks unrealistic? Try again with a new generation.</p>
+              <button onClick={onRegenerate}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
+                <RefreshCw className="h-4 w-4" />Regenerate
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -103,6 +108,7 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
           className="w-full rounded-xl border border-border object-contain shadow-[var(--shadow-md)]"
         />
 
+        {/* Primary actions */}
         <div className="flex gap-3">
           <Button onClick={handleDownload} size="lg" className="flex-1 gap-2">
             <Download className="h-4 w-4" />
@@ -112,17 +118,22 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
             <Share2 className="h-4 w-4" />
             Share
           </Button>
-          {onRegenerate && (
-            <Button variant="outline" size="lg" onClick={onRegenerate} className="gap-2">
-              <RefreshCw className="h-4 w-4" />
-              Regenerate
-            </Button>
-          )}
           <Button variant="outline" size="lg" onClick={onReset} className="gap-2">
             <RotateCcw className="h-4 w-4" />
             Try another
           </Button>
         </div>
+
+        {/* Regenerate — separated with hint */}
+        {onRegenerate && (
+          <div className="flex flex-col items-center gap-2 pt-1 border-t border-border">
+            <p className="text-xs text-muted-foreground">Result looks unrealistic? Try again with a new generation.</p>
+            <Button variant="outline" size="sm" onClick={onRegenerate} className="gap-2">
+              <RefreshCw className="h-3.5 w-3.5" />
+              Regenerate
+            </Button>
+          </div>
+        )}
 
         <p className="text-xs text-muted-foreground text-center">
           Powered by <span className="font-medium text-foreground">Roomora</span> &amp; Gemini AI
