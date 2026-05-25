@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { Camera, Download, ImageIcon, Loader2, AlertCircle, RefreshCw, RotateCcw } from "lucide-react";
+import { Camera, Download, ImageIcon, Loader2, AlertCircle, RefreshCw, RotateCcw, Share2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getProducts } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
@@ -187,13 +187,33 @@ export default function CapturePage() {
   // RESULT SCREEN
   // ─────────────────────────────────────────────────────────────────────────
   if (phase === "result" && resultImage) {
+    const filename = `roomora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
+    const handleShare = async () => {
+      try {
+        const res  = await fetch(resultImage);
+        const blob = await res.blob();
+        const file = new File([blob], filename, { type: "image/jpeg" });
+        if (navigator.canShare?.({ files: [file] })) {
+          await navigator.share({ files: [file], title: product?.name ? `${product.name} in your room` : "Your room" });
+        } else {
+          const a = document.createElement("a"); a.href = resultImage; a.download = filename; a.click();
+        }
+      } catch { /* cancelled */ }
+    };
     return (
       <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
         <img src={resultImage} alt="Your room with the furniture"
           className="absolute inset-0 w-full h-full object-contain" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-        <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none">
-          <Logo />
+        <div className="absolute top-8 left-0 right-0 flex items-center justify-between px-6">
+          <div className="w-10" />
+          <div className="pointer-events-none"><Logo /></div>
+          <button onClick={handleShare}
+            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm border border-white/30
+                       flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+            aria-label="Share">
+            <Share2 className="h-5 w-5 text-white" />
+          </button>
         </div>
         <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
           <p className="text-white/80 text-sm font-light">Here's your room ✨</p>

@@ -1,4 +1,4 @@
-import { Download, RefreshCw, RotateCcw } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Share2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 
@@ -15,11 +15,28 @@ const isMobile =
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
 export default function ResultStep({ result, productName, onReset, onRegenerate }: Props) {
+  const filename = `roomora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
+
   const handleDownload = () => {
     const a = document.createElement("a");
     a.href = result;
-    a.download = `roomora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
+    a.download = filename;
     a.click();
+  };
+
+  const handleShare = async () => {
+    try {
+      const res  = await fetch(result);
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: "image/jpeg" });
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], title: `${productName} in your room` });
+      } else {
+        handleDownload(); // fallback: download if share API unavailable
+      }
+    } catch {
+      // user cancelled — ignore
+    }
   };
 
   // ── Mobile: full-screen overlay (matches CapturePage result) ────────────────
@@ -29,8 +46,15 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
         <img src={result} alt={`${productName} placed in room`}
           className="absolute inset-0 w-full h-full object-contain" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
-        <div className="absolute top-8 left-0 right-0 flex justify-center pointer-events-none">
-          <Logo />
+        <div className="absolute top-8 left-0 right-0 flex items-center justify-between px-6">
+          <div className="w-10" /> {/* spacer */}
+          <div className="pointer-events-none"><Logo /></div>
+          <button onClick={handleShare}
+            className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm border border-white/30
+                       flex items-center justify-center active:scale-95 transition-transform shadow-lg"
+            aria-label="Share">
+            <Share2 className="h-5 w-5 text-white" />
+          </button>
         </div>
         <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
           <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
@@ -83,6 +107,10 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
           <Button onClick={handleDownload} size="lg" className="flex-1 gap-2">
             <Download className="h-4 w-4" />
             Download
+          </Button>
+          <Button variant="outline" size="lg" onClick={handleShare} className="gap-2">
+            <Share2 className="h-4 w-4" />
+            Share
           </Button>
           {onRegenerate && (
             <Button variant="outline" size="lg" onClick={onRegenerate} className="gap-2">
