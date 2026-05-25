@@ -20,11 +20,32 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 }
 
 /**
- * Ensures an image is a data URL. If it's an http(s) URL, fetches it via the
- * /api/scrape proxy (which handles CORS) and returns a base64 data URL.
+ * Ensures an image is a data URL.
+ * - Data URLs are returned as-is.
+ * - HTTP(S) URLs: first tries a direct browser fetch (works for Supabase Storage
+ *   and other CORS-accessible CDNs); falls back to the /api/scrape proxy for
+ *   URLs that block cross-origin requests.
  */
 async function toDataUrl(src: string): Promise<string> {
   if (src.startsWith("data:")) return src;
+
+  // 1. Try direct fetch — works for Supabase Storage public URLs and most CDNs
+  try {
+    const direct = await fetch(src);
+    if (direct.ok) {
+      const blob = await direct.blob();
+      return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload  = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    }
+  } catch {
+    // CORS blocked or network error — fall through to proxy
+  }
+
+  // 2. Proxy fallback for CORS-blocked URLs (e.g. retailer product pages)
   const res = await fetch(`/api/scrape?url=${encodeURIComponent(src)}&type=image`);
   if (!res.ok) throw new Error(`Failed to fetch image (${res.status}): ${src}`);
   const { data, mimeType } = await res.json();
@@ -33,22 +54,31 @@ async function toDataUrl(src: string): Promise<string> {
 }
 
 
+
+/**
+ * Crops `src` from the center to match targetW:targetH aspect ratio, then scales
+ * to fit within targetW×targetH — but NEVER scales up (avoids zoom-in artifacts).
+ */
 async function cropToRatio(src: string, targetW: number, targetH: number): Promise<string> {
   try {
     const img = await loadImage(src);
     const srcRatio = img.width / img.height;
     const tgtRatio = targetW / targetH;
     let sx = 0, sy = 0, sw = img.width, sh = img.height;
-    if (srcRatio > tgtRatio) {
+    if (srcRatio > tgtRatio) {         // too wide — trim sides
       sw = Math.round(img.height * tgtRatio);
       sx = Math.round((img.width - sw) / 2);
-    } else if (srcRatio < tgtRatio) {
+    } else if (srcRatio < tgtRatio) {  // too tall — trim top/bottom
       sh = Math.round(img.width / tgtRatio);
       sy = Math.round((img.height - sh) / 2);
     }
+    // Scale DOWN to fit inside targetW×targetH; never scale UP
+    const scale = Math.min(targetW / sw, targetH / sh, 1);
+    const outW = Math.round(sw * scale);
+    const outH = Math.round(sh * scale);
     const canvas = document.createElement("canvas");
-    canvas.width = targetW; canvas.height = targetH;
-    canvas.getContext("2d")!.drawImage(img, sx, sy, sw, sh, 0, 0, targetW, targetH);
+    canvas.width = outW; canvas.height = outH;
+    canvas.getContext("2d")!.drawImage(img, sx, sy, sw, sh, 0, 0, outW, outH);
     return canvas.toDataURL("image/jpeg", 0.92);
   } catch {
     return src;
@@ -114,9 +144,46 @@ export interface ProductDimensions {
   height_cm?: number | null;
 }
 
+export interface RoomMeasurement {
+  ceiling_height_cm: number | null;
+  floor_width_cm:    number | null;
+  reference_objects: string[];
+  confidence:        "low" | "medium" | "high";
+}
+
+/** Calls /api/claude-measure to estimate room dimensions from a photo. */
+async function measureRoom(roomDataUrl: string): Promise<RoomMeasurement | null> {
+  try {
+    const res = await fetch("/api/claude-measure", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ imageDataUrl: roomDataUrl }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Converts a RoomMeasurement into a short sentence appended to instruction 2.
+ * Returns "" for null or low-confidence measurements.
+ */
+function buildRoomNote(m: RoomMeasurement | null): string {
+  if (!m || m.confidence === "low") return "";
+  const parts: string[] = [];
+  if (m.ceiling_height_cm) parts.push(`ceiling ~${m.ceiling_height_cm}cm tall`);
+  if (m.floor_width_cm)    parts.push(`visible floor ~${m.floor_width_cm}cm wide`);
+  if (!parts.length) return "";
+  return ` Room scale context: ${parts.join(", ")}.`;
+}
+
 export interface ExtractedProductData {
   name:        string;
   description: string;
+  category:    string | null;
   length_cm:   number | null;
   width_cm:    number | null;
   height_cm:   number | null;
@@ -253,6 +320,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "name": "full product name",
   "description": "one sentence describing only the materials and surface finishes of this product — the information that cannot be seen from photos alone. Focus on: what material each part is made of, and whether the finish is glossy, matte, satin, velvet, bouclé, lacquered, oiled, etc. Do not describe shape, silhouette, colour, or dimensions — those are visible in photos. Skip anything unknown. Example: 'Sintered stone top with a high-gloss Calacatta Black finish; fluted MDF base in matte caramel lacquer.'",
+  "category": "<one of: table | sofa | chair | bed | wardrobe | shelving | desk | TV stand | other>",
   "length_cm": <number or null>,
   "width_cm": <number or null>,
   "height_cm": <number or null>,
@@ -261,6 +329,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
 
 Rules:
 - description: concrete visual details only, no marketing language
+- category: pick the single best match from the allowed values. Use "table" for any type of table (dining, coffee, side, console, extendable). Use "sofa" for sofas and sectional sofas. Use "chair" for chairs and armchairs. Never leave null — default to "other" if unsure.
 - dimensions: look hard — check spec tables, bullet lists, product descriptions. Polish patterns: "dł." = length, "szer." = width, "wys." = height, "głęb." = depth. Convert mm→cm. If a dimension has a range (e.g. 160–200 cm), use the base/smaller value. If only height is listed, still return it. Never leave all three null if any dimension data exists on the page.
 - imageUrls: pick up to 5 best full-size product photos from the list below (prefer og:image or data-large_image sources; avoid thumbnails, avoid duplicate angles)
 ${structuredContext}
@@ -302,6 +371,7 @@ ${pageText}`;
   return {
     name:        json.name        ?? "",
     description: json.description ?? "",
+    category:    json.category    ?? null,
     length_cm:   json.length_cm   ?? null,
     width_cm:    json.width_cm    ?? null,
     height_cm:   json.height_cm   ?? null,
@@ -322,8 +392,10 @@ ${pageText}`;
 export async function placeInRoom(
   productImages: string[],
   roomPhoto: string,
+  productName: string,
   productDescription: string,
   dimensions?: ProductDimensions,
+  category?: string | null,
 ): Promise<string> {
   const origImg = await loadImage(roomPhoto);
   const origW = origImg.width;
@@ -331,9 +403,12 @@ export async function placeInRoom(
 
   const roomResized = await resizeImage(roomPhoto, 1536, 1536, 0.92);
 
-  // Derive a short label from the product description (e.g. "dining table, oak" → "DINING TABLE")
-  const productLabel = productDescription
-    ? productDescription.split(/[,.(]/)[0].trim().toUpperCase().slice(0, 40)
+  // eraseLabel: use the explicit category when available (gives Gemini a clear English
+  // furniture type like "dining table" or "sofa"), fall back to product name otherwise.
+  const eraseLabel  = (category ?? productName).split(/[,.(]/)[0].trim().toLowerCase();
+  // placeLabel: always use product name for the placement prompt (more specific)
+  const productLabel = productName
+    ? productName.split(/[,.(]/)[0].trim().toUpperCase().slice(0, 40)
     : "PRODUCT";
 
   const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
@@ -348,52 +423,64 @@ export async function placeInRoom(
     productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
   );
 
-  // ── CALL 1: ERASE (room only, 1 image) ───────────────────────────────────────
+  // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
   const erasePrompt =
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
-    `Task: Find and completely erase any ${productLabel.toLowerCase()} or furniture of the same type — ` +
-    `regardless of style, colour, or material, and even if covered or obscured by other objects. ` +
-    `Fill the erased area naturally with the floor and wall visible in the surrounding areas. ` +
-    `Do not change anything else in the room.\n\n` +
+    `Task: Look for a ${eraseLabel} in this room. ` +
+    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall. ` +
+    `Erase ONLY the ${eraseLabel} — do not touch any other furniture, rugs, decorations, or objects in the room. ` +
+    `If no ${eraseLabel} is visible, return the photo completely unchanged.\n\n` +
+    `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
-  let canvasDataUrl = roomResized;
-  try {
-    const erased = await callGemini([
+  const [eraseResult, measureResult] = await Promise.allSettled([
+    callGemini([
       { text: erasePrompt },
       { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ]);
-    canvasDataUrl = await resizeImage(erased, 1536, 1536, 0.92);
-  } catch {
-    // Fall back to original room if erase fails
+    ]),
+    measureRoom(roomResized),
+  ]);
+
+  let canvasDataUrl = roomResized;
+  if (eraseResult.status === "fulfilled") {
+    // Crop erase output back to the original aspect ratio so any erase-step
+    // framing drift doesn't compound into the place step
+    canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
   }
 
-  // ── CALL 2: PLACE (erased room + perspective + front) ────────────────────────
-  const numRefs = productResized.length;
-  const refLabel = numRefs >= 2 ? "(second and third images)" : "(second image)";
-  const imgWord  = numRefs >= 2 ? "three" : "two";
+  const roomNote = buildRoomNote(
+    measureResult.status === "fulfilled" ? measureResult.value : null,
+  );
+
+  // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
+  const numRefs     = productResized.length;
+  const productSlot = numRefs >= 2 ? "second and third images" : "second image";
+  const framingSlot = numRefs >= 2 ? "fourth image" : "third image";
 
   const placePrompt =
-    `You are a photo compositor. You will receive ${imgWord} images and editing instructions.\n\n` +
-    `CANVAS (first image): A real photograph of a room. This is the scene you must edit — add the product into it while keeping all background elements (walls, floor, ceiling, windows) exactly as they are.\n\n` +
-    `${productLabel} REFERENCE ${refLabel}: Images of the exact ${productLabel.toLowerCase()} to insert.\n` +
+    `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
+    `BACKGROUND (first image): The room to composite into. Furniture has been cleared from this area.\n\n` +
+    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `CRITICAL: The ${productLabel.toLowerCase()} in your output must look identical to the one in the REFERENCE — same exact shape, colour, material, texture, surface finish (glossy or matte), stitching, leg style, and proportions. Do not redesign it or replace it with a different model.\n` +
-    `Do NOT carry over any background or environment from the reference images.\n\n` +
-    `Editing instructions:\n` +
-    `1. Insert the ${productLabel.toLowerCase()} from the REFERENCE into the CANVAS photo.\n` +
-    `2. Place it on the floor in the most natural central position.${dimNote}\n` +
-    `3. Use real-world scale — if it doesn't fully fit in the frame at that scale, let it be cropped at the edges. Never shrink it just to make it fit.\n` +
-    `4. Light it to match the room's light sources. Cast a realistic shadow on the floor following the direction and softness of other shadows visible in the room.\n` +
-    `5. Blend the edges of the ${productLabel.toLowerCase()} naturally into the scene so the result looks like a single photograph taken in this room.\n` +
-    `6. Keep the exact same framing, crop, and orientation as the CANVAS photo.\n\n` +
-    `Output only the final edited image. No text.`;
+    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
+    `Do NOT carry over any background from the reference images.\n\n` +
+    `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
+    `Compositing steps:\n` +
+    `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
+    `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
+    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural central position.${dimNote}${roomNote}\n` +
+    `3. Size it to real-world scale. If very large, let its edges be cropped — do not shrink the room to fit the furniture.\n` +
+    `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
+    `5. Light it to match the room's light sources. Cast a realistic shadow beneath it. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric textures stay visible.\n` +
+    `6. Blend its edges naturally into the scene.\n\n` +
+    `Output only the composited image. No text.`;
 
   const parts: unknown[] = [
     { text: placePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
-    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },           // BACKGROUND (erased)
+    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // PRODUCT REFERENCE
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },             // FRAMING MASTER (original)
   ];
 
   const raw = await callGemini(parts);
