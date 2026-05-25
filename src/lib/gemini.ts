@@ -567,10 +567,10 @@ export async function placeInRoom(
   const placePrompt =
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
-    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room. These images have a plain white studio background — ignore the white background entirely; extract only the furniture object itself (its shape, colour, material, texture, and proportions).\n` +
+    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} in your output must look identical to the object in the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign, recolour, or substitute it.\n` +
-    `CRITICAL: The white studio background in the reference images is NOT part of the product. Do not render a white box, white glow, or any white area around the placed furniture.\n\n` +
+    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
+    `Do NOT carry over any background from the reference images.\n\n` +
     `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
