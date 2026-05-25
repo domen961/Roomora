@@ -8,7 +8,7 @@ import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
 interface Props {
-  product:    { images: string[]; description: string; name: string; id: string; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
+  product:    { images: string[]; description: string; name: string; id: string; category?: string | null; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
   merchantId: string;
   onResult:   (resultUrl: string) => void;
   onBack:     () => void;
@@ -113,7 +113,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
     async (roomPhoto: string, captureToken?: string) => {
       setPhase("processing");
       try {
-        const result = await placeInRoom(product.images, roomPhoto, product.description);
+        const result = await placeInRoom(product.images, roomPhoto, product.name, product.description, undefined, product.category);
 
         // Save compressed result back to room_captures so phone can display it
         if (captureToken) {

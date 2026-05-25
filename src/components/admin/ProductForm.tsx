@@ -5,7 +5,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { saveProduct, updateProduct } from "@/lib/db";
-import type { Product } from "@/lib/products";
+import type { Product, FurnitureCategory } from "@/lib/products";
+import { FURNITURE_CATEGORIES } from "@/lib/products";
 import { extractProductData } from "@/lib/gemini";
 
 interface Props {
@@ -20,6 +21,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
 
   const [name,        setName]        = useState(initialProduct?.name        ?? "");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
+  const [category,    setCategory]    = useState<FurnitureCategory | "">(initialProduct?.category ?? "");
   const [lengthCm,    setLengthCm]    = useState(initialProduct?.length_cm   != null ? String(initialProduct.length_cm) : "");
   const [widthCm,     setWidthCm]     = useState(initialProduct?.width_cm    != null ? String(initialProduct.width_cm)  : "");
   const [heightCm,    setHeightCm]    = useState(initialProduct?.height_cm   != null ? String(initialProduct.height_cm) : "");
@@ -53,6 +55,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
       const extracted = await extractProductData(importUrl.trim());
       if (extracted.name)        setName(extracted.name);
       if (extracted.description) setDescription(extracted.description);
+      if (extracted.category)    setCategory(extracted.category as FurnitureCategory);
       if (extracted.length_cm)   setLengthCm(String(extracted.length_cm));
       if (extracted.width_cm)    setWidthCm(String(extracted.width_cm));
       if (extracted.height_cm)   setHeightCm(String(extracted.height_cm));
@@ -116,6 +119,8 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         height_cm: heightCm ? parseFloat(heightCm) : null,
       };
 
+      const cat = category || null;
+
       if (isEditing && initialProduct) {
         await updateProduct(
           merchantId,
@@ -124,6 +129,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           description.trim() || name.trim(),
           finalImages,
           dims,
+          cat,
         );
       } else {
         const slug = name.trim().toLowerCase()
@@ -140,6 +146,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           description.trim() || name.trim(),
           finalImages,
           dims,
+          cat,
         );
       }
       onSave();
@@ -252,6 +259,28 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           onChange={(e) => setName(e.target.value)}
           className="rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
         />
+      </div>
+
+      {/* ── Category ── */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs uppercase tracking-widest text-muted-foreground">
+          Furniture category
+        </label>
+        <select
+          value={category}
+          onChange={(e) => setCategory(e.target.value as FurnitureCategory | "")}
+          className="rounded-md border border-input bg-card px-3 py-2 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">— select a category —</option>
+          {FURNITURE_CATEGORIES.map((cat) => (
+            <option key={cat} value={cat}>
+              {cat.charAt(0).toUpperCase() + cat.slice(1)}
+            </option>
+          ))}
+        </select>
+        <p className="text-xs text-muted-foreground/70">
+          Used by AI to recognise and clear the correct furniture type from your room photo.
+        </p>
       </div>
 
       {/* ── Description ── */}

@@ -87,12 +87,14 @@ export default function CapturePage() {
         const result = await placeInRoom(
           product.images,
           photo,
+          product.name,
           product.description,
           {
             length_cm: product.length_cm ?? undefined,
             width_cm:  product.width_cm  ?? undefined,
             height_cm: product.height_cm ?? undefined,
           },
+          product.category,
         );
         setResultImage(result);
         setPhase("result");

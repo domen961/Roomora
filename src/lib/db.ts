@@ -1,5 +1,5 @@
 import { supabase } from "./supabase";
-import type { Product } from "./products";
+import type { Product, FurnitureCategory } from "./products";
 
 // ── Snapshot upload ────────────────────────────────────────────────────────────
 
@@ -45,6 +45,7 @@ export interface DBProduct {
   merchant_id: string;
   name:        string;
   description: string;
+  category:    string | null;
   image_0:     string | null;
   image_1:     string | null;
   thumbnail:   string | null;
@@ -66,6 +67,7 @@ export function dbRowToProduct(row: DBProduct): Product {
     id:          row.id,
     name:        row.name,
     description: row.description,
+    category:    (row.category as FurnitureCategory) ?? null,
     images:      [row.image_0, row.image_1]
                    .filter((url): url is string => !!url && url !== ""),
     thumbnail:   row.thumbnail ?? "",
@@ -93,8 +95,9 @@ export async function saveProduct(
   id:          string,
   name:        string,
   description: string,
-  images:      string[],         // [image_0, image_1, thumbnail] — data URLs or http URLs
+  images:      string[],         // [image_0, image_1] — data URLs or http URLs
   dimensions?: ProductDimensions,
+  category?:   string | null,
 ): Promise<void> {
   const [url0, url1] = await Promise.all([
     uploadSnapshot(merchantId, id, "perspective", images[0]),
@@ -106,6 +109,7 @@ export async function saveProduct(
     merchant_id: merchantId,
     name,
     description,
+    category:  category ?? null,
     image_0:   url0,
     image_1:   url1,
     thumbnail: null,
@@ -125,6 +129,7 @@ export async function updateProduct(
   description: string,
   images:      string[],
   dimensions?: ProductDimensions,
+  category?:   string | null,
 ): Promise<void> {
   // If the URL already points to this product's storage folder, reuse it as-is
   const uploadOrReuse = (src: string, angle: string) =>
@@ -140,6 +145,7 @@ export async function updateProduct(
   const { error } = await supabase.from("products").update({
     name,
     description,
+    category:  category ?? null,
     image_0:   url0,
     image_1:   url1,
     thumbnail: null,
