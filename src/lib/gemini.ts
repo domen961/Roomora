@@ -571,8 +571,8 @@ export async function placeInRoom(
     `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
     `3. Size it to real-world scale. If very large, let its edges be cropped — do not shrink the room to fit the furniture.\n` +
     `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
-    `5. Light it to match the room's light sources. Cast a realistic shadow beneath it. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric textures stay visible.\n` +
-    `6. Blend its edges naturally into the scene.\n\n` +
+    `5. Light it to match the room's light sources — direction, colour temperature, and intensity. The reference was shot under studio lighting; apply this room's actual lighting instead. Cast a realistic shadow beneath it that matches the direction and softness of other shadows in the scene. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric and leather textures stay visible.\n` +
+    `6. Blend its edges naturally into the scene — no hard cuts, no bright outlines, no halo.\n\n` +
     `Output only the composited image. No text.`;
 
   const parts: unknown[] = [
