@@ -35,7 +35,8 @@ async function uploadSnapshot(
   if (error) throw new Error(`Storage upload failed: ${error.message}`);
 
   const { data } = supabase.storage.from("product-images").getPublicUrl(path);
-  return data.publicUrl;
+  // Append a version timestamp so CDN-cached old images are never served after an update
+  return `${data.publicUrl}?v=${Date.now()}`;
 }
 
 // ── Product CRUD ───────────────────────────────────────────────────────────────
@@ -131,11 +132,14 @@ export async function updateProduct(
   dimensions?: ProductDimensions,
   category?:   string | null,
 ): Promise<void> {
-  // If the URL already points to this product's storage folder, reuse it as-is
+  // Only reuse the existing Supabase URL if the source is a data URL that
+  // was never changed (indicated by it being the exact stored URL, sans query string).
+  // Any new image (data URL or different http URL) always triggers a fresh upload.
+  const storagePath = `/product-images/${merchantId}/${productId}/`;
   const uploadOrReuse = (src: string, angle: string) =>
-    src.includes(`/product-images/${merchantId}/${productId}/`)
-      ? Promise.resolve(src)
-      : uploadSnapshot(merchantId, productId, angle, src);
+    src.startsWith("data:") || !src.includes(storagePath)
+      ? uploadSnapshot(merchantId, productId, angle, src)
+      : Promise.resolve(src);  // unchanged — exact same Supabase URL, skip re-upload
 
   const [url0, url1] = await Promise.all([
     uploadOrReuse(images[0], "perspective"),
