@@ -43,6 +43,10 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
   if (isMobile) {
     return (
       <div className="relative w-full bg-black overflow-hidden" style={{ height: "100dvh" }}>
+        {/* Blurred background fills the letterbox bars */}
+        <img src={result} aria-hidden alt=""
+          className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl brightness-50 pointer-events-none" />
+        {/* Sharp image on top */}
         <img src={result} alt={`${productName} placed in room`}
           className="absolute inset-0 w-full h-full object-contain" />
         <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
