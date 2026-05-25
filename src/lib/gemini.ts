@@ -403,13 +403,23 @@ export async function placeInRoom(
 
   const roomResized = await resizeImage(roomPhoto, 1536, 1536, 0.92);
 
-  // eraseLabel: use the explicit category when available (gives Gemini a clear English
-  // furniture type like "dining table" or "sofa"), fall back to product name otherwise.
-  const eraseLabel  = (category ?? productName).split(/[,.(]/)[0].trim().toLowerCase();
+  // eraseLabel: derive the clearest possible single furniture-type word for Gemini.
+  // Priority: (1) explicit category, (2) furniture keyword found in product name, (3) first word of name.
+  const KNOWN_TYPES = ["sofa", "table", "chair", "bed", "wardrobe", "shelving", "desk", "tv stand"];
+  function resolveEraseLabel(cat: string | null | undefined, name: string): string {
+    if (cat && cat !== "other") return cat.toLowerCase();
+    const lower = name.toLowerCase();
+    const match = KNOWN_TYPES.find((t) => lower.includes(t));
+    if (match) return match;
+    return name.split(/[,.(]/)[0].trim().toLowerCase();
+  }
+  const eraseLabel   = resolveEraseLabel(category, productName);
   // placeLabel: always use product name for the placement prompt (more specific)
   const productLabel = productName
     ? productName.split(/[,.(]/)[0].trim().toUpperCase().slice(0, 40)
     : "PRODUCT";
+  // All other furniture types Gemini must NOT touch during erase
+  const otherTypes = KNOWN_TYPES.filter((t) => t !== eraseLabel).join(", ");
 
   const dimNote = (dimensions?.length_cm || dimensions?.width_cm || dimensions?.height_cm)
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
@@ -428,9 +438,12 @@ export async function placeInRoom(
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
     `Task: Look for a ${eraseLabel} in this room. ` +
-    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall. ` +
-    `Erase ONLY the ${eraseLabel} — do not touch any other furniture, rugs, decorations, or objects in the room. ` +
-    `If no ${eraseLabel} is visible, return the photo completely unchanged.\n\n` +
+    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall.\n\n` +
+    `STRICT RULES:\n` +
+    `- Erase ONLY items that are clearly a ${eraseLabel}. Do not erase any other furniture type.\n` +
+    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other object.\n` +
+    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
+    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} if you can see one.\n\n` +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
