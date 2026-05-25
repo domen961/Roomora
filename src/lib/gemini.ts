@@ -145,10 +145,11 @@ export interface ProductDimensions {
 }
 
 export interface RoomMeasurement {
-  ceiling_height_cm: number | null;
-  floor_width_cm:    number | null;
-  reference_objects: string[];
-  confidence:        "low" | "medium" | "high";
+  ceiling_height_cm:  number | null;
+  floor_width_cm:     number | null;
+  reference_objects:  string[];
+  confidence:         "low" | "medium" | "high";
+  detected_furniture: string[];   // furniture types Claude can see in the room
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -455,16 +456,25 @@ export async function placeInRoom(
     measureRoom(roomResized),
   ]);
 
+  const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
+
+  // Only use the erase result if Claude confirmed the target furniture type is present.
+  // If Claude didn't run or returned no detected_furniture, fall back to using the erase
+  // result (conservative: preserves existing behaviour when measurement is unavailable).
+  const targetPresent =
+    !measurement?.detected_furniture?.length   // Claude didn't detect anything → fall back
+    || measurement.detected_furniture.some(
+         (f) => f.toLowerCase().includes(eraseLabel) || eraseLabel.includes(f.toLowerCase())
+       );
+
   let canvasDataUrl = roomResized;
-  if (eraseResult.status === "fulfilled") {
+  if (eraseResult.status === "fulfilled" && targetPresent) {
     // Crop erase output back to the original aspect ratio so any erase-step
     // framing drift doesn't compound into the place step
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
   }
 
-  const roomNote = buildRoomNote(
-    measureResult.status === "fulfilled" ? measureResult.value : null,
-  );
+  const roomNote = buildRoomNote(measurement);
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;

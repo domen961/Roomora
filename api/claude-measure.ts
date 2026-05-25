@@ -24,12 +24,18 @@ export default async function handler(req: any, res: any) {
 - Standard ceilings: 240–270cm; high ceilings: 280–320cm
 - Window sills: ~85–100cm from floor
 
+Also detect which of these standard furniture types are currently visible in the room
+(list ONLY those that are actually present — empty array if none):
+"table" (any type: dining, coffee, side, console), "sofa", "chair", "bed",
+"wardrobe", "shelving", "desk", "TV stand"
+
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "ceiling_height_cm": <integer or null>,
   "floor_width_cm": <integer or null>,
   "reference_objects": ["door ~200cm", "..."],
-  "confidence": "low" | "medium" | "high"
+  "confidence": "low" | "medium" | "high",
+  "detected_furniture": ["sofa", "chair"]
 }
 Confidence: high=door/window clearly visible, medium=multiple reference objects, low=minimal references.`;
 
@@ -43,7 +49,7 @@ Confidence: high=door/window clearly visible, medium=multiple reference objects,
       },
       body: JSON.stringify({
         model:      "claude-haiku-4-5",
-        max_tokens: 256,
+        max_tokens: 384,
         messages: [
           {
             role:    "user",
