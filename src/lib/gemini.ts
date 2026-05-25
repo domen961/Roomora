@@ -459,16 +459,19 @@ export async function placeInRoom(
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
 
   // Only use the erase result if Claude confirmed the target furniture type is present.
-  // If Claude didn't run or returned no detected_furniture, fall back to using the erase
-  // result (conservative: preserves existing behaviour when measurement is unavailable).
+  // - measurement === null  → Claude API failed entirely → fall back (use erase result, old behaviour)
+  // - detected_furniture: [] → Claude checked, found nothing → SKIP erase (nothing of that type exists)
+  // - detected_furniture contains eraseLabel → target is present → use erase result
   const targetPresent =
-    !measurement?.detected_furniture?.length   // Claude didn't detect anything → fall back
+    measurement === null                       // Claude API failed entirely → fall back
     || measurement.detected_furniture.some(
          (f) => f.toLowerCase().includes(eraseLabel) || eraseLabel.includes(f.toLowerCase())
        );
 
+  const eraseWasApplied = eraseResult.status === "fulfilled" && targetPresent;
+
   let canvasDataUrl = roomResized;
-  if (eraseResult.status === "fulfilled" && targetPresent) {
+  if (eraseWasApplied) {
     // Crop erase output back to the original aspect ratio so any erase-step
     // framing drift doesn't compound into the place step
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
@@ -481,9 +484,16 @@ export async function placeInRoom(
   const productSlot = numRefs >= 2 ? "second and third images" : "second image";
   const framingSlot = numRefs >= 2 ? "fourth image" : "third image";
 
+  // When the erase step was skipped (target furniture not in room), the background
+  // still contains all original furniture — tell Gemini this explicitly so it does
+  // not clear anything to "make room" for the new product.
+  const backgroundDesc = eraseWasApplied
+    ? `BACKGROUND (first image): The room to composite into. The existing ${eraseLabel} has been cleared from the floor area — the rest of the room is untouched.`
+    : `BACKGROUND (first image): The original room as photographed. Every piece of furniture, rug, plant, and decoration you can see MUST remain in your output exactly as-is. Do not remove, move, or alter any existing object.`;
+
   const placePrompt =
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
-    `BACKGROUND (first image): The room to composite into. Furniture has been cleared from this area.\n\n` +
+    `${backgroundDesc}\n\n` +
     `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
@@ -492,7 +502,7 @@ export async function placeInRoom(
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
-    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural central position.${dimNote}${roomNote}\n` +
+    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
     `3. Size it to real-world scale. If very large, let its edges be cropped — do not shrink the room to fit the furniture.\n` +
     `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
     `5. Light it to match the room's light sources. Cast a realistic shadow beneath it. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric textures stay visible.\n` +
