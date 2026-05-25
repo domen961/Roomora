@@ -215,19 +215,14 @@ export default function CapturePage() {
             <Share2 className="h-5 w-5 text-white" />
           </button>
         </div>
-        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-4 px-6">
+        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-3 px-6">
           <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
+          {/* Primary actions: Retry + Download */}
           <div className="flex gap-3 w-full max-w-xs">
             <button onClick={handleRetry}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
               <RotateCcw className="h-4 w-4" />Retry
             </button>
-            {lastPhoto && (
-              <button onClick={() => processPhoto(lastPhoto)}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
-                <RefreshCw className="h-4 w-4" />Again
-              </button>
-            )}
             <button
               onClick={() => {
                 const a = document.createElement("a");
@@ -239,6 +234,16 @@ export default function CapturePage() {
               <Download className="h-4 w-4" />Download
             </button>
           </div>
+          {/* Regenerate — separated with hint */}
+          {lastPhoto && (
+            <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
+              <p className="text-white/45 text-xs">Result looks unrealistic? Try again with a new generation.</p>
+              <button onClick={() => processPhoto(lastPhoto)}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
+                <RefreshCw className="h-4 w-4" />Regenerate
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
