@@ -222,6 +222,9 @@ export interface RoomMeasurement {
   reference_objects:  string[];
   confidence:         "low" | "medium" | "high";
   detected_furniture: string[];   // furniture types Claude can see in the room
+  camera_height_cm:   number | null;
+  horizon_pct:        number | null;
+  camera_angle:       "looking_down" | "level" | "looking_up" | null;
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -251,6 +254,25 @@ function buildRoomNote(m: RoomMeasurement | null): string {
   if (m.floor_width_cm)    parts.push(`visible floor ~${m.floor_width_cm}cm wide`);
   if (!parts.length) return "";
   return ` Room scale context: ${parts.join(", ")}.`;
+}
+
+function buildPerspectiveNote(m: RoomMeasurement | null): string {
+  if (!m || m.confidence === "low") return "";
+  const parts: string[] = [];
+  if (m.camera_height_cm)
+    parts.push(`camera is at ~${m.camera_height_cm}cm from the floor`);
+  if (m.camera_angle === "looking_down")
+    parts.push("camera tilts downward — more of the furniture top surface is visible");
+  else if (m.camera_angle === "looking_up")
+    parts.push("camera tilts upward — furniture top surface is mostly hidden");
+  if (m.horizon_pct !== null) {
+    const pos = m.horizon_pct < 35 ? "high in the frame"
+               : m.horizon_pct > 65 ? "low in the frame"
+               : "mid-frame";
+    parts.push(`horizon line is ${pos}`);
+  }
+  if (!parts.length) return "";
+  return ` Camera viewpoint: ${parts.join("; ")}.`;
 }
 
 export interface ExtractedProductData {
@@ -543,7 +565,8 @@ export async function placeInRoom(
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
   }
 
-  const roomNote = buildRoomNote(measurement);
+  const roomNote  = buildRoomNote(measurement);
+  const perspNote = buildPerspectiveNote(measurement);
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;
@@ -568,7 +591,7 @@ export async function placeInRoom(
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
-    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
+    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
     `3. Size it to real-world scale. If very large, let its edges be cropped — do not shrink the room to fit the furniture.\n` +
     `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
     `5. Light it to match the room's light sources — direction, colour temperature, and intensity. The reference was shot under studio lighting; apply this room's actual lighting instead. Cast a realistic shadow beneath it that matches the direction and softness of other shadows in the scene. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric and leather textures stay visible.\n` +

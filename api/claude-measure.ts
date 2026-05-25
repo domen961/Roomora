@@ -29,13 +29,24 @@ Also detect which of these standard furniture types are currently visible in the
 "table" (any type: dining, coffee, side, console), "sofa", "chair", "bed",
 "wardrobe", "shelving", "desk", "TV stand"
 
+Also analyze the camera perspective:
+- Estimate camera height from the floor using reference objects
+  (door handle ~100cm, table surface ~75cm, chair seat ~45cm, bed surface ~55cm)
+- Estimate horizon line position as an integer percentage from the TOP of the image
+  (0 = very top, 50 = mid-frame, 100 = very bottom)
+- Describe camera tilt: "looking_down" if camera angles noticeably toward the floor,
+  "level" if roughly horizontal, "looking_up" if angled upward
+
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "ceiling_height_cm": <integer or null>,
   "floor_width_cm": <integer or null>,
   "reference_objects": ["door ~200cm", "..."],
   "confidence": "low" | "medium" | "high",
-  "detected_furniture": ["sofa", "chair"]
+  "detected_furniture": ["sofa", "chair"],
+  "camera_height_cm": <integer or null>,
+  "horizon_pct": <0-100 integer or null>,
+  "camera_angle": "looking_down" | "level" | "looking_up" | null
 }
 Confidence: high=door/window clearly visible, medium=multiple reference objects, low=minimal references.`;
 
@@ -49,7 +60,7 @@ Confidence: high=door/window clearly visible, medium=multiple reference objects,
       },
       body: JSON.stringify({
         model:      "claude-haiku-4-5",
-        max_tokens: 384,
+        max_tokens: 512,
         messages: [
           {
             role:    "user",
