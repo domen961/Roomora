@@ -1,11 +1,12 @@
-import { Download, RotateCcw } from "lucide-react";
+import { Download, RefreshCw, RotateCcw } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 
 interface Props {
-  result: string;
-  productName: string;
-  onReset: () => void;
+  result:        string;
+  productName:   string;
+  onReset:       () => void;
+  onRegenerate?: () => void;  // re-run Gemini with the same room photo
 }
 
 const isMobile =
@@ -13,7 +14,7 @@ const isMobile =
   (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-export default function ResultStep({ result, productName, onReset }: Props) {
+export default function ResultStep({ result, productName, onReset, onRegenerate }: Props) {
   const handleDownload = () => {
     const a = document.createElement("a");
     a.href = result;
@@ -38,6 +39,12 @@ export default function ResultStep({ result, productName, onReset }: Props) {
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
               <RotateCcw className="h-4 w-4" />Retry
             </button>
+            {onRegenerate && (
+              <button onClick={onRegenerate}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
+                <RefreshCw className="h-4 w-4" />Again
+              </button>
+            )}
             <button onClick={handleDownload}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
               <Download className="h-4 w-4" />Download
@@ -77,6 +84,12 @@ export default function ResultStep({ result, productName, onReset }: Props) {
             <Download className="h-4 w-4" />
             Download
           </Button>
+          {onRegenerate && (
+            <Button variant="outline" size="lg" onClick={onRegenerate} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Regenerate
+            </Button>
+          )}
           <Button variant="outline" size="lg" onClick={onReset} className="gap-2">
             <RotateCcw className="h-4 w-4" />
             Try another

@@ -8,10 +8,12 @@ import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
 interface Props {
-  product:    { images: string[]; description: string; name: string; id: string; category?: string | null; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
-  merchantId: string;
-  onResult:   (resultUrl: string) => void;
-  onBack:     () => void;
+  product:           { images: string[]; description: string; name: string; id: string; category?: string | null; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
+  merchantId:        string;
+  onResult:          (resultUrl: string) => void;
+  onBack:            () => void;
+  onPhotoReady?:     (photo: string) => void;  // fires before processing — lets parent store room photo
+  autoProcessPhoto?: string;                    // if set, auto-process this photo on mount (regenerate)
 }
 
 const isMobile =
@@ -21,7 +23,7 @@ const isMobile =
 
 type Phase = "idle" | "processing" | "error";
 
-export default function RoomStep({ product, merchantId, onResult, onBack }: Props) {
+export default function RoomStep({ product, merchantId, onResult, onBack, onPhotoReady, autoProcessPhoto }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -109,8 +111,14 @@ export default function RoomStep({ product, merchantId, onResult, onBack }: Prop
     return () => streamRef.current?.getTracks().forEach((t) => t.stop());
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Auto-process on mount when regenerating (autoProcessPhoto set by parent)
+  useEffect(() => {
+    if (autoProcessPhoto) processRoomPhoto(autoProcessPhoto);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   const processRoomPhoto = useCallback(
     async (roomPhoto: string, captureToken?: string) => {
+      onPhotoReady?.(roomPhoto);   // notify parent so it can store photo for regenerate
       setPhase("processing");
       try {
         const result = await placeInRoom(product.images, roomPhoto, product.name, product.description, undefined, product.category);

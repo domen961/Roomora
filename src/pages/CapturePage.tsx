@@ -1,6 +1,6 @@
 import { useParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { Camera, Download, ImageIcon, Loader2, AlertCircle, RotateCcw } from "lucide-react";
+import { Camera, Download, ImageIcon, Loader2, AlertCircle, RefreshCw, RotateCcw } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { getProducts } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
@@ -44,6 +44,7 @@ export default function CapturePage() {
   const [phase,       setPhase]       = useState<Phase>("idle");
   const [error,       setError]       = useState("");
   const [resultImage, setResultImage] = useState<string | null>(null);
+  const [lastPhoto,   setLastPhoto]   = useState<string>("");
 
   // ── Camera startup ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -79,6 +80,7 @@ export default function CapturePage() {
   // ── Process a photo (direct mode: call Gemini right here on the phone) ─────
   const processPhoto = async (photo: string) => {
     if (!token) return;
+    setLastPhoto(photo);   // store for regenerate
     setPhase("generating");
 
     try {
@@ -200,6 +202,12 @@ export default function CapturePage() {
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
               <RotateCcw className="h-4 w-4" />Retry
             </button>
+            {lastPhoto && (
+              <button onClick={() => processPhoto(lastPhoto)}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
+                <RefreshCw className="h-4 w-4" />Again
+              </button>
+            )}
             <button
               onClick={() => {
                 const a = document.createElement("a");

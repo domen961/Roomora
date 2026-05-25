@@ -11,10 +11,12 @@ type Phase = "loading" | "room" | "result" | "error";
 export default function TryPage() {
   const { shopId, productId } = useParams<{ shopId: string; productId: string }>();
 
-  const [phase,   setPhase]   = useState<Phase>("loading");
-  const [product, setProduct] = useState<{ id: string; images: string[]; description: string; name: string; length_cm: number | null; width_cm: number | null; height_cm: number | null } | null>(null);
-  const [result,  setResult]  = useState<string | null>(null);
-  const [error,   setError]   = useState("");
+  const [phase,         setPhase]         = useState<Phase>("loading");
+  const [product,       setProduct]       = useState<{ id: string; images: string[]; description: string; name: string; length_cm: number | null; width_cm: number | null; height_cm: number | null } | null>(null);
+  const [result,        setResult]        = useState<string | null>(null);
+  const [error,         setError]         = useState("");
+  const [lastRoomPhoto, setLastRoomPhoto] = useState<string>("");
+  const [regenerating,  setRegenerating]  = useState(false);
 
   // Auto-resize the embed iframe by reporting content height to parent window
   useEffect(() => {
@@ -82,7 +84,8 @@ export default function TryPage() {
       <ResultStep
         result={result}
         productName={product.name}
-        onReset={handleClose}
+        onReset={() => { setResult(null); setLastRoomPhoto(""); setRegenerating(false); setPhase("room"); }}
+        onRegenerate={lastRoomPhoto ? () => { setResult(null); setRegenerating(true); setPhase("room"); } : undefined}
       />
     );
   }
@@ -92,7 +95,9 @@ export default function TryPage() {
       <RoomStep
         product={product}
         merchantId={shopId!}
-        onResult={(r) => { setResult(r); setPhase("result"); }}
+        onPhotoReady={(photo) => setLastRoomPhoto(photo)}
+        autoProcessPhoto={regenerating ? lastRoomPhoto : undefined}
+        onResult={(r) => { setRegenerating(false); setResult(r); setPhase("result"); }}
         onBack={handleClose}
       />
     );
