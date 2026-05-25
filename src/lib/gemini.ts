@@ -105,6 +105,74 @@ async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.
   }
 }
 
+/**
+ * Prepares a product reference image for Gemini:
+ * 1. Composites onto white (handles transparency)
+ * 2. Auto-crops the white margins so the product fills the frame
+ * 3. Resizes to maxW × maxH
+ *
+ * Tight framing gives Gemini better visual fidelity and avoids the
+ * "flat paste-in" look caused by excessive white border area.
+ */
+async function prepareProductImage(src: string, maxW: number, maxH: number, quality = 0.92): Promise<string> {
+  try {
+    const img = await loadImage(src);
+
+    // Step 1: composite onto white at full resolution
+    const full = document.createElement("canvas");
+    full.width = img.width; full.height = img.height;
+    const fCtx = full.getContext("2d")!;
+    fCtx.fillStyle = "#ffffff";
+    fCtx.fillRect(0, 0, img.width, img.height);
+    fCtx.drawImage(img, 0, 0);
+
+    // Step 2: find bounding box of non-white pixels (threshold < 242 on any channel)
+    const pixels = fCtx.getImageData(0, 0, img.width, img.height).data;
+    let minX = img.width, minY = img.height, maxX = 0, maxY = 0;
+    const T = 242;
+    for (let y = 0; y < img.height; y++) {
+      for (let x = 0; x < img.width; x++) {
+        const i = (y * img.width + x) * 4;
+        if (pixels[i] < T || pixels[i + 1] < T || pixels[i + 2] < T) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    const cropW = maxX - minX + 1;
+    const cropH = maxY - minY + 1;
+
+    // Fallback: image is all-white or trivially small
+    if (cropW < 10 || cropH < 10) return resizeImage(src, maxW, maxH, quality, "#ffffff");
+
+    // Step 3: add ~6% padding around the detected object
+    const padX = Math.round(cropW * 0.06);
+    const padY = Math.round(cropH * 0.06);
+    const sx = Math.max(0, minX - padX);
+    const sy = Math.max(0, minY - padY);
+    const sw = Math.min(img.width  - sx, cropW + padX * 2);
+    const sh = Math.min(img.height - sy, cropH + padY * 2);
+
+    // Step 4: scale cropped region to target size
+    const scale = Math.min(maxW / sw, maxH / sh, 1);
+    const outW  = Math.round(sw * scale);
+    const outH  = Math.round(sh * scale);
+
+    const out = document.createElement("canvas");
+    out.width = outW; out.height = outH;
+    const oCtx = out.getContext("2d")!;
+    oCtx.fillStyle = "#ffffff";
+    oCtx.fillRect(0, 0, outW, outH);
+    oCtx.drawImage(full, sx, sy, sw, sh, 0, 0, outW, outH);
+    return out.toDataURL("image/jpeg", quality);
+  } catch {
+    return resizeImage(src, maxW, maxH, quality, "#ffffff");
+  }
+}
+
 async function callGemini(parts: unknown[]): Promise<string> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90_000); // 90 s hard limit
@@ -436,7 +504,7 @@ export async function placeInRoom(
     ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
     : [];
   const productResized = await Promise.all(
-    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92, "#ffffff")),
+    productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
   );
 
   // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
@@ -499,10 +567,10 @@ export async function placeInRoom(
   const placePrompt =
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
-    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n` +
+    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room. These images have a plain white studio background — ignore the white background entirely; extract only the furniture object itself (its shape, colour, material, texture, and proportions).\n` +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
-    `Do NOT carry over any background from the reference images.\n\n` +
+    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} in your output must look identical to the object in the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign, recolour, or substitute it.\n` +
+    `CRITICAL: The white studio background in the reference images is NOT part of the product. Do not render a white box, white glow, or any white area around the placed furniture.\n\n` +
     `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
