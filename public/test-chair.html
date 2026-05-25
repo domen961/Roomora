@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<script src="/embed.js" data-shop="64559a6e-d4aa-45f0-bee0-0421210f8d8a"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Krzesło K36 – TC Meble</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+      background: #fff;
+      color: #1a1a1a;
+      font-size: 15px;
+    }
+
+    /* NAV */
+    header {
+      border-bottom: 1px solid #e5e5e5;
+      padding: 0 40px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      background: #fff;
+      z-index: 10;
+    }
+    .logo { font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #1a1a1a; text-decoration: none; }
+    nav { display: flex; gap: 28px; }
+    nav a { text-decoration: none; color: #555; font-size: 13px; letter-spacing: 0.5px; }
+    nav a:hover { color: #1a1a1a; }
+    .header-right { display: flex; align-items: center; gap: 20px; font-size: 13px; color: #555; }
+
+    /* BREADCRUMB */
+    .breadcrumb {
+      padding: 14px 40px;
+      font-size: 12px;
+      color: #888;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    .breadcrumb a { color: #888; text-decoration: none; }
+    .breadcrumb a:hover { color: #1a1a1a; }
+    .breadcrumb span { margin: 0 6px; }
+
+    /* PRODUCT LAYOUT */
+    .product {
+      max-width: 1160px;
+      margin: 40px auto;
+      padding: 0 40px;
+      display: grid;
+      grid-template-columns: 1fr 480px;
+      gap: 60px;
+    }
+
+    /* GALLERY */
+    .gallery { display: flex; flex-direction: column; gap: 12px; }
+    .gallery-main {
+      background: #f7f7f7;
+      border-radius: 6px;
+      aspect-ratio: 4/3;
+      overflow: hidden;
+    }
+    .gallery-main img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+    .gallery-thumbs { display: flex; gap: 8px; flex-wrap: wrap; }
+    .gallery-thumbs img {
+      width: 72px;
+      height: 72px;
+      object-fit: cover;
+      border-radius: 4px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: border-color 0.15s;
+    }
+    .gallery-thumbs img:first-child { border-color: #1a1a1a; }
+    .gallery-thumbs img:hover { border-color: #555; }
+
+    /* PRODUCT INFO */
+    .product-info { display: flex; flex-direction: column; gap: 20px; }
+    .brand-tag { font-size: 11px; text-transform: uppercase; letter-spacing: 2px; color: #888; }
+    .product-name { font-size: 26px; font-weight: 400; line-height: 1.3; }
+    .rating { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #888; }
+    .stars { color: #f59e0b; font-size: 14px; }
+    .price { font-size: 28px; font-weight: 600; color: #1a1a1a; }
+    .price-sub { font-size: 13px; color: #888; margin-top: 2px; }
+    .divider { height: 1px; background: #e8e8e8; }
+
+    /* OPTIONS */
+    .options { display: flex; flex-direction: column; gap: 16px; }
+    .option-label {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #888;
+      margin-bottom: 6px;
+    }
+    select {
+      width: 100%;
+      padding: 10px 14px;
+      border: 1px solid #d5d5d5;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #1a1a1a;
+      background: #fff;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 14px center;
+      cursor: pointer;
+    }
+    select:focus { outline: none; border-color: #1a1a1a; }
+
+    /* ACTIONS */
+    .actions { display: flex; flex-direction: column; gap: 10px; }
+    .btn-primary {
+      width: 100%;
+      padding: 14px;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary:hover { background: #333; }
+    .btn-secondary {
+      width: 100%;
+      padding: 13px;
+      background: #fff;
+      color: #1a1a1a;
+      border: 1px solid #d5d5d5;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .btn-secondary:hover { border-color: #1a1a1a; }
+
+    /* SPECS */
+    .specs { display: flex; flex-direction: column; gap: 8px; }
+    .spec-row { display: flex; justify-content: space-between; font-size: 13px; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
+    .spec-row:last-child { border-bottom: none; }
+    .spec-key { color: #888; }
+    .spec-val { font-weight: 500; }
+
+    /* DESCRIPTION */
+    .description {
+      max-width: 1160px;
+      margin: 0 auto 60px;
+      padding: 0 40px;
+    }
+    .description h2 { font-size: 20px; font-weight: 400; margin-bottom: 16px; }
+    .description p { font-size: 14px; color: #444; line-height: 1.8; margin-bottom: 12px; }
+
+    /* FOOTER */
+    footer {
+      background: #1a1a1a;
+      color: #aaa;
+      padding: 40px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    footer a { color: #aaa; text-decoration: none; }
+    footer a:hover { color: #fff; }
+
+    /* ── MOBILE ────────────────────────────────────────────────────────────── */
+    @media (max-width: 720px) {
+      header { padding: 0 16px; height: 56px; }
+      nav { display: none; }
+      .header-right .phone { display: none; }
+
+      .breadcrumb { padding: 10px 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+      .product {
+        grid-template-columns: 1fr;
+        gap: 24px;
+        margin: 20px auto;
+        padding: 0 16px;
+      }
+
+      .gallery-thumbs img { width: 60px; height: 60px; }
+
+      .product-name { font-size: 21px; }
+      .price { font-size: 24px; }
+
+      .description { padding: 0 16px; margin-bottom: 40px; }
+
+      footer {
+        flex-direction: column;
+        gap: 16px;
+        padding: 28px 16px;
+        text-align: center;
+      }
+      footer div { flex-wrap: wrap; justify-content: center; gap: 16px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <a class="logo" href="#">TC MEBLE</a>
+    <nav>
+      <a href="#">Stoły</a>
+      <a href="#">Krzesła</a>
+      <a href="#">Sofy</a>
+      <a href="#">Sypialnia</a>
+      <a href="#">Akcesoria</a>
+    </nav>
+    <div class="header-right">
+      <span class="phone">+48 12 345 67 89</span>
+      <span>🛒 0</span>
+    </div>
+  </header>
+
+  <div class="breadcrumb">
+    <a href="#">Strona główna</a><span>›</span>
+    <a href="#">Krzesła</a><span>›</span>
+    Krzesło K36 — Dębowa Noga, Obrotowe, Skóra Naturalna Premium
+  </div>
+
+  <div class="product">
+
+    <!-- GALLERY -->
+    <div class="gallery">
+      <div class="gallery-main">
+        <img id="main-img"
+          src="https://tcmeble.pl/wp-content/uploads/2024/10/Krzeslo-obrotowe-tapicerowane-skora-naturalna-na-debowej-nodze-do-jadalni-salonu-premium.jpg"
+          alt="Krzesło K36" />
+      </div>
+      <div class="gallery-thumbs">
+        <img src="https://tcmeble.pl/wp-content/uploads/2024/10/Krzeslo-obrotowe-tapicerowane-skora-naturalna-na-debowej-nodze-do-jadalni-salonu-premium.jpg" onclick="setMain(this)" alt="" />
+        <img src="https://tcmeble.pl/wp-content/uploads/2024/10/Krzeslo-obrotowe-skora-naturalna-debowa-noga-premium-nowoczesne-eleganckie.jpg" onclick="setMain(this)" alt="" />
+        <img src="https://tcmeble.pl/wp-content/uploads/2024/10/Krzeslo-tapicerowane-skora-naturalna-obrotowe-dab-nowoczesne.jpg" onclick="setMain(this)" alt="" />
+        <img src="https://tcmeble.pl/wp-content/uploads/2024/10/Krzeslo-do-jadalni-obrotowe-skora-premium-debowa-noga.jpg" onclick="setMain(this)" alt="" />
+      </div>
+    </div>
+
+    <!-- INFO -->
+    <div class="product-info">
+      <div>
+        <div class="brand-tag">TC Meble — Kolekcja K36</div>
+        <h1 class="product-name">Krzesło K36 Obrotowe<br>Dębowa Noga, Skóra Naturalna Premium</h1>
+      </div>
+
+      <div class="rating">
+        <span class="stars">★★★★★</span>
+        <span>4.9 (84 opinii)</span>
+      </div>
+
+      <div>
+        <div class="price">2 190 zł – 2 690 zł</div>
+        <div class="price-sub">Cena zależy od wybranego koloru skóry</div>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="options">
+        <div>
+          <div class="option-label">Kolor skóry</div>
+          <select>
+            <option>Koniakowy (naturalny)</option>
+            <option>Ciemny brąz</option>
+            <option>Czarny</option>
+            <option>Kremowy</option>
+          </select>
+        </div>
+        <div>
+          <div class="option-label">Kolor nóg</div>
+          <select>
+            <option>Dąb naturalny</option>
+            <option>Dąb bielony</option>
+            <option>Dąb wędzony</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button data-roomora-product="krzeslo_k_36_debowa_noga_obrotowa_skora_naturalna_premium_1779466318966">See in your room</button>
+        <button class="btn-primary">Dodaj do koszyka</button>
+        <button class="btn-secondary">Zapytaj doradcę</button>
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="specs">
+        <div class="spec-row"><span class="spec-key">Tapicerka</span><span class="spec-val">Skóra naturalna, pełnoziarnista</span></div>
+        <div class="spec-row"><span class="spec-key">Nogi</span><span class="spec-val">Lite drewno dębowe</span></div>
+        <div class="spec-row"><span class="spec-key">Mechanizm</span><span class="spec-val">Obrotowy 360°</span></div>
+        <div class="spec-row"><span class="spec-key">Szerokość</span><span class="spec-val">58 cm</span></div>
+        <div class="spec-row"><span class="spec-key">Głębokość</span><span class="spec-val">62 cm</span></div>
+        <div class="spec-row"><span class="spec-key">Wysokość</span><span class="spec-val">84 cm</span></div>
+        <div class="spec-row"><span class="spec-key">Czas realizacji</span><span class="spec-val">3–5 tygodni</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="description">
+    <div class="divider" style="margin-bottom:40px"></div>
+    <h2>O produkcie</h2>
+    <p>Krzesło K36 to eleganckie połączenie litego drewna dębowego z tapicerką ze skóry naturalnej najwyższej jakości. Obrotowy mechanizm 360° sprawia, że krzesło jest równie funkcjonalne co piękne — idealne zarówno do jadalni, jak i salonu.</p>
+    <p>Pełnoziarnista skóra naturalna z czasem nabiera szlachetnej patyny, co nadaje meblowi unikalnego charakteru. Solidna, ręcznie wykończona noga dębowa zapewnia stabilność i wytrzymałość na lata.</p>
+    <p>Dostępne w czterech kolorach tapicerki i trzech odcieniach drewna dębowego — łatwe do dopasowania do każdego wnętrza.</p>
+  </div>
+
+  <footer>
+    <span>© 2026 TC Meble. Wszelkie prawa zastrzeżone.</span>
+    <div style="display:flex;gap:24px">
+      <a href="#">Polityka prywatności</a>
+      <a href="#">Regulamin</a>
+      <a href="#">Kontakt</a>
+    </div>
+  </footer>
+
+  <script>
+    function setMain(thumb) {
+      document.getElementById('main-img').src = thumb.src;
+      document.querySelectorAll('.gallery-thumbs img').forEach(t => t.style.borderColor = 'transparent');
+      thumb.style.borderColor = '#1a1a1a';
+    }
+  </script>
+</body>
+</html>
