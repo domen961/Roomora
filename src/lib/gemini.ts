@@ -85,7 +85,7 @@ async function cropToRatio(src: string, targetW: number, targetH: number): Promi
   }
 }
 
-async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.8): Promise<string> {
+async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.8, background?: string): Promise<string> {
   try {
     const img = await loadImage(src);
     const scale = Math.min(maxW / img.width, maxH / img.height, 1);
@@ -93,7 +93,12 @@ async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.
     const h = Math.round(img.height * scale);
     const canvas = document.createElement("canvas");
     canvas.width = w; canvas.height = h;
-    canvas.getContext("2d")!.drawImage(img, 0, 0, w, h);
+    const ctx = canvas.getContext("2d")!;
+    if (background) {
+      ctx.fillStyle = background;
+      ctx.fillRect(0, 0, w, h);
+    }
+    ctx.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL("image/jpeg", quality);
   } catch {
     return src;
@@ -431,7 +436,7 @@ export async function placeInRoom(
     ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
     : [];
   const productResized = await Promise.all(
-    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92)),
+    productDataUrls.map((img) => resizeImage(img, 1024, 1024, 0.92, "#ffffff")),
   );
 
   // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
