@@ -42,13 +42,14 @@ Also analyze the camera perspective:
 
 Also identify up to 3 pieces of furniture clearly visible in the room and estimate their
 real-world heights. Use standard dimensions as a guide:
-- Dresser / sideboard: 75–100cm
+- TV stand / media console (low cabinet under a TV or screen): 40–60cm — IMPORTANT: if you can see a TV or monitor above a cabinet, classify it as a TV stand, NOT a dresser
+- Dresser / sideboard (tall cabinet without a TV above it): 75–100cm
 - Bed to top of mattress: 55–65cm; to top of headboard: 90–130cm
 - Bookshelf / wardrobe: 150–200cm
 - Nightstand / bedside table: 55–70cm
 - Sofa back: 80–95cm; chair back: 80–100cm
 - Coffee table: 40–50cm; dining table: 72–80cm
-Return as "visible_refs": [{"name": "wooden dresser on left wall", "height_cm": 85}, ...]
+Return as "visible_refs": [{"name": "TV stand under the TV on left wall", "height_cm": 50}, ...]
 Up to 3 items. Empty array if nothing is clearly identifiable.
 
 Return ONLY valid JSON (no markdown fences, no extra text):
