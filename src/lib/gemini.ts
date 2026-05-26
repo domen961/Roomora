@@ -297,6 +297,45 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
   return ` Scale: the furniture is ${dims.height_cm}cm tall — that is ${doorPct}% as tall as a standard door (~200cm)${ceilPart}. A life-sized piece of furniture is a substantial object; if in doubt, make it LARGER, never smaller.`;
 }
 
+/**
+ * Asks Gemini to synthesise a view of the furniture from a specific elevation angle.
+ * Used when the room camera is steeply tilted (≥ 35°) and the 2 standard product
+ * photos don't give enough angular coverage for Gemini to composite correctly.
+ *
+ * @param preparedImgs  - white-bg + auto-cropped product images (already prepared)
+ * @param tiltDeg       - target elevation in degrees (from Claude camera_tilt_deg)
+ * @param furnitureType - e.g. "chair", "sofa", "table"
+ * @returns data URL of the synthesised view, or null on failure
+ */
+async function generateAltView(
+  preparedImgs: string[],
+  tiltDeg: number,
+  furnitureType: string,
+): Promise<string | null> {
+  try {
+    const altPrompt =
+      `You receive photos of a ${furnitureType}. ` +
+      `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
+      `elevated at approximately ${tiltDeg}° above horizontal — ` +
+      `as if you are standing above it and looking down at that angle. ` +
+      `Show the top surface (seat/cushion/tabletop), armrests or sides from above, ` +
+      `and the legs/base spreading outward and downward. ` +
+      `Keep the model, materials, colours, stitching details, and proportions ` +
+      `IDENTICAL to the reference photos. ` +
+      `White background. Single object only, centred. No shadows, no room context.`;
+
+    const parts: unknown[] = [
+      { text: altPrompt },
+      ...preparedImgs.map((img) => ({
+        inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
+      })),
+    ];
+    return await callGemini(parts);
+  } catch {
+    return null;  // graceful degradation — never blocks placement
+  }
+}
+
 /** Elevation angle of a standard product photo (roughly 28° above horizontal). */
 const PRODUCT_SOURCE_ANGLE = 28;
 /**
@@ -610,17 +649,39 @@ export async function placeInRoom(
 
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
 
-  // ── Product image prep + perspective warp (uses camera_tilt_deg from measurement) ──
+  // ── Product image prep ──────────────────────────────────────────────────────
   const productDataUrls = productImages.length > 0
     ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
     : [];
   const roomAngle = measurement?.camera_tilt_deg ?? null;
-  const productResized = await Promise.all(
-    productDataUrls.map(async (img) => {
-      const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-      return roomAngle !== null ? warpProductAngle(prepared, roomAngle) : prepared;
+
+  // Prepare base images: white bg + auto-crop margins
+  const preparedImgs = await Promise.all(
+    productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
+  );
+
+  // ── Steep-angle view synthesis ──────────────────────────────────────────────
+  // For rooms with a steep camera (≥ 35°), ask Gemini to render the furniture
+  // from that exact elevation — a full "novel view synthesis" pre-pass. This
+  // gives Gemini a reference that already shows correct foreshortening and seat
+  // visibility, so the placement call only needs to composite, not extrapolate.
+  // Skip the geometric warp when a synthesised view is available (it supersedes it).
+  const shouldGenAlt = roomAngle !== null && roomAngle >= 35 && preparedImgs.length > 0;
+  const altViewUrl   = shouldGenAlt
+    ? await generateAltView(preparedImgs, roomAngle!, eraseLabel)
+    : null;
+
+  // Apply geometric warp only when no synthesised view is available
+  const productResized: string[] = await Promise.all(
+    preparedImgs.map((img) => {
+      if (altViewUrl) return Promise.resolve(img);        // warp skipped — alt view takes over
+      return roomAngle !== null ? warpProductAngle(img, roomAngle) : Promise.resolve(img);
     }),
   );
+  if (altViewUrl) {
+    const preparedAlt = await prepareProductImage(altViewUrl, 1024, 1024, 0.92);
+    productResized.push(preparedAlt);
+  }
 
   // Only use the erase result if Claude confirmed the target furniture type is present.
   // - measurement === null  → Claude API failed entirely → fall back (use erase result, old behaviour)
@@ -647,8 +708,12 @@ export async function placeInRoom(
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;
-  const productSlot = numRefs >= 2 ? "second and third images" : "second image";
-  const framingSlot = numRefs >= 2 ? "fourth image" : "third image";
+  const productSlot = numRefs >= 3 ? "second, third, and fourth images"
+                    : numRefs >= 2 ? "second and third images"
+                    : "second image";
+  const framingSlot = numRefs >= 3 ? "fifth image"
+                    : numRefs >= 2 ? "fourth image"
+                    : "third image";
 
   // When the erase step was skipped (target furniture not in room), the background
   // still contains all original furniture — tell Gemini this explicitly so it does
@@ -660,7 +725,9 @@ export async function placeInRoom(
   const placePrompt =
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
-    `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n` +
+    (altViewUrl
+      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image is a synthesised view of the same furniture rendered from a steep downward angle matching this room's camera — treat it as the primary perspective reference.\n`
+      : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
