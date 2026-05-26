@@ -33,8 +33,10 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [extractedImages, setExtractedImages] = useState<string[]>([]);
   const [addingImageIdx,  setAddingImageIdx]  = useState<number | null>(null);
 
-  // Photos — pre-filled with existing Supabase URLs when editing
-  const [photos,    setPhotos]    = useState<string[]>(initialProduct?.images.filter(Boolean) ?? []);
+  // Photos — pre-filled with the first 2 images only (index 2+ are AI top views)
+  const [photos,    setPhotos]    = useState<string[]>(
+    (initialProduct?.images ?? []).slice(0, 2).filter(Boolean),
+  );
   const [photoDrag,   setPhotoDrag]   = useState(false);
   const [previewUrl,  setPreviewUrl]  = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
