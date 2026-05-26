@@ -276,6 +276,17 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
   return ` Camera viewpoint: ${parts.join("; ")}.`;
 }
 
+/**
+ * Computes a concrete percentage-based scale hint for the placement prompt.
+ * e.g. "the chair (84cm) should span ~32% of the ceiling-to-floor distance in the frame."
+ * Giving Gemini a pixel-ratio target is far more reliable than raw centimetre values alone.
+ */
+function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): string {
+  if (!m || m.confidence === "low" || !m.ceiling_height_cm || !dims?.height_cm) return "";
+  const pct = Math.round((dims.height_cm / m.ceiling_height_cm) * 100);
+  return ` Scale target: the furniture is ${dims.height_cm}cm tall in a ${m.ceiling_height_cm}cm room — it must occupy approximately ${pct}% of the visible floor-to-ceiling span in the image. If unsure, err larger: furniture that looks life-sized is correct, furniture that looks like a toy is wrong.`;
+}
+
 /** Elevation angle of a standard product photo (roughly 28° above horizontal). */
 const PRODUCT_SOURCE_ANGLE = 28;
 /**
@@ -622,6 +633,7 @@ export async function placeInRoom(
 
   const roomNote  = buildRoomNote(measurement);
   const perspNote = buildPerspectiveNote(measurement);
+  const scaleNote = buildScaleNote(measurement, dimensions);
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;
@@ -647,7 +659,7 @@ export async function placeInRoom(
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
     `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
-    `3. Size it to real-world scale. If very large, let its edges be cropped — do not shrink the room to fit the furniture.\n` +
+    `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
     `5. Light it to match the room's light sources — direction, colour temperature, and intensity. The reference was shot under studio lighting; apply this room's actual lighting instead. Cast a realistic shadow beneath it that matches the direction and softness of other shadows in the scene. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric and leather textures stay visible.\n` +
     `6. Blend its edges naturally into the scene — no hard cuts, no bright outlines, no halo.\n\n` +
