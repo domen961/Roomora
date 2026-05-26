@@ -357,7 +357,7 @@ async function warpProductAngle(src: string, roomAngleDeg: number): Promise<stri
 }
 
 /**
- * Generates a steep-angle (45° elevation) view of a product using Gemini Image.
+ * Generates a steep-angle (75° elevation) view of a product using Gemini Image.
  * Called once at product-save time in the admin panel; the result is stored in
  * Supabase as `image_2` / `topdown.jpg`. At placement time `placeInRoom` uses it
  * as a 3rd reference image so Gemini can composite from the room's steep camera
@@ -378,9 +378,10 @@ export async function generateProductAltView(
   const prompt =
     `You receive photos of a ${furnitureType}. ` +
     `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-    `elevated at approximately 45° above horizontal — ` +
-    `as if you are looking down at it from a 45° angle. ` +
-    `Show the top surface (seat/cushion/tabletop) and the legs or base spreading outward. ` +
+    `elevated at approximately 75° above horizontal — almost directly overhead, ` +
+    `as if you are standing directly above it and looking nearly straight down. ` +
+    `The top surface (seat/cushion/tabletop) should dominate the frame; ` +
+    `legs or base visible only as short stubs at the corners spreading slightly outward. ` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
     `White background. Single object only, centred. No shadows, no room context.`;
@@ -723,7 +724,7 @@ export async function placeInRoom(
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
     (hasPrebuiltAlt
-      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image shows this furniture from a steep downward angle (~45°) — use it as the primary perspective reference for compositing from the room's camera angle.\n`
+      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image shows this furniture from a steep downward angle (~75°, nearly overhead) — use it as the primary perspective reference for compositing from the room's camera angle.\n`
       : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +

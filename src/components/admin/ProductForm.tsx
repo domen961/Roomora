@@ -454,7 +454,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         {altViewGenerating ? (
           <div className="flex items-center gap-2 h-24 rounded-md border border-border bg-muted/30 px-4">
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Generating 45° view…</span>
+            <span className="text-xs text-muted-foreground">Generating 75° view…</span>
           </div>
         ) : altView ? (
           <div className="relative group w-24">
@@ -464,7 +464,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
               className="h-24 w-24 rounded-md object-cover border border-border"
             />
             <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1.5 py-0.5 rounded">
-              45° view
+              75° view
             </span>
           </div>
         ) : (
