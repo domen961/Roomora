@@ -49,6 +49,7 @@ export interface DBProduct {
   category:    string | null;
   image_0:     string | null;
   image_1:     string | null;
+  image_2:     string | null;   // AI-generated steep-angle (top-down) view (~45°)
   thumbnail:   string | null;
   length_cm:   number | null;
   width_cm:    number | null;
@@ -69,7 +70,7 @@ export function dbRowToProduct(row: DBProduct): Product {
     name:        row.name,
     description: row.description,
     category:    (row.category as FurnitureCategory) ?? null,
-    images:      [row.image_0, row.image_1]
+    images:      [row.image_0, row.image_1, row.image_2]
                    .filter((url): url is string => !!url && url !== ""),
     thumbnail:   row.thumbnail ?? "",
     length_cm:   row.length_cm  ?? null,
@@ -100,9 +101,10 @@ export async function saveProduct(
   dimensions?: ProductDimensions,
   category?:   string | null,
 ): Promise<void> {
-  const [url0, url1] = await Promise.all([
+  const [url0, url1, url2] = await Promise.all([
     uploadSnapshot(merchantId, id, "perspective", images[0]),
     uploadSnapshot(merchantId, id, "front",       images[1] ?? images[0]),
+    images[2] ? uploadSnapshot(merchantId, id, "topdown", images[2]) : Promise.resolve(null),
   ]);
 
   const { error } = await supabase.from("products").insert({
@@ -113,6 +115,7 @@ export async function saveProduct(
     category:  category ?? null,
     image_0:   url0,
     image_1:   url1,
+    image_2:   url2 ?? null,
     thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
@@ -141,9 +144,10 @@ export async function updateProduct(
       ? uploadSnapshot(merchantId, productId, angle, src)
       : Promise.resolve(src);  // unchanged — exact same Supabase URL, skip re-upload
 
-  const [url0, url1] = await Promise.all([
+  const [url0, url1, url2] = await Promise.all([
     uploadOrReuse(images[0], "perspective"),
     uploadOrReuse(images[1] ?? images[0], "front"),
+    images[2] ? uploadOrReuse(images[2], "topdown") : Promise.resolve(null),
   ]);
 
   const { error } = await supabase.from("products").update({
@@ -152,6 +156,7 @@ export async function updateProduct(
     category:  category ?? null,
     image_0:   url0,
     image_1:   url1,
+    image_2:   url2 ?? null,
     thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
@@ -169,6 +174,7 @@ export async function deleteProduct(
   await supabase.storage.from("product-images").remove([
     `${merchantId}/${productId}/perspective.jpg`,
     `${merchantId}/${productId}/front.jpg`,
+    `${merchantId}/${productId}/topdown.jpg`,
   ]);
 
   const { error } = await supabase

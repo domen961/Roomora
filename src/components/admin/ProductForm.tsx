@@ -1,13 +1,13 @@
 import { useRef, useState } from "react";
 import {
-  Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles,
+  Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { saveProduct, updateProduct } from "@/lib/db";
 import type { Product, FurnitureCategory } from "@/lib/products";
 import { FURNITURE_CATEGORIES } from "@/lib/products";
-import { extractProductData } from "@/lib/gemini";
+import { extractProductData, generateProductAltView } from "@/lib/gemini";
 
 interface Props {
   merchantId:      string;
@@ -38,12 +38,17 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [photoDrag, setPhotoDrag] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
+  // AI top-down view (image_2)
+  const [altView,           setAltView]           = useState<string | null>(initialProduct?.images[2] ?? null);
+  const [altViewGenerating, setAltViewGenerating] = useState(false);
+
   // Save
-  const [saving,    setSaving]    = useState(false);
-  const [saveError, setSaveError] = useState("");
+  const [saving,     setSaving]     = useState(false);
+  const [savingStep, setSavingStep] = useState("");   // shown in button while saving
+  const [saveError,  setSaveError]  = useState("");
 
   const canSave = name.trim().length > 0 && photos.length > 0;
-  const isBusy  = importing || saving || addingImageIdx !== null;
+  const isBusy  = importing || saving || addingImageIdx !== null || altViewGenerating;
 
   // ── URL import ──────────────────────────────────────────────────────────────
   const handleImport = async () => {
@@ -105,13 +110,45 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     addPhotoFiles(Array.from(e.dataTransfer.files));
   };
 
+  // ── AI top-down view ────────────────────────────────────────────────────────
+  const handleRegenerateAltView = async () => {
+    if (photos.length === 0 || altViewGenerating) return;
+    setAltViewGenerating(true);
+    try {
+      const generated = await generateProductAltView(photos, category || "chair");
+      setAltView(generated);
+    } catch (err) {
+      console.error("Alt view generation failed:", err);
+    } finally {
+      setAltViewGenerating(false);
+    }
+  };
+
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!canSave || isBusy) return;
     setSaving(true);
+    setSavingStep("");
     setSaveError("");
     try {
-      const finalImages = photos.filter(Boolean);
+      const baseImages = photos.filter(Boolean);
+
+      // Generate alt view on first save (if not already available)
+      let finalAltView = altView;
+      if (!finalAltView && baseImages.length >= 1) {
+        try {
+          setSavingStep("Generating top view…");
+          finalAltView = await generateProductAltView(baseImages, category || "chair");
+          setAltView(finalAltView);
+        } catch {
+          // non-blocking — product saves fine without the alt view
+        }
+      }
+      setSavingStep("Saving…");
+
+      const finalImages = finalAltView
+        ? [...baseImages.slice(0, 2), finalAltView]
+        : baseImages.slice(0, 2);
 
       const dims = {
         length_cm: lengthCm ? parseFloat(lengthCm) : null,
@@ -396,6 +433,59 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         />
       </div>
 
+      {/* ── AI top-down view ── */}
+      <div className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <label className="text-xs uppercase tracking-widest text-muted-foreground">
+            Top view (AI)
+          </label>
+          {altView && !altViewGenerating && (
+            <button
+              onClick={handleRegenerateAltView}
+              disabled={isBusy || photos.length === 0}
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+            >
+              <RefreshCw className="h-3 w-3" />
+              Re-generate
+            </button>
+          )}
+        </div>
+
+        {altViewGenerating ? (
+          <div className="flex items-center gap-2 h-24 rounded-md border border-border bg-muted/30 px-4">
+            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Generating 45° view…</span>
+          </div>
+        ) : altView ? (
+          <div className="relative group w-24">
+            <img
+              src={altView}
+              alt="AI top-down view"
+              className="h-24 w-24 rounded-md object-cover border border-border"
+            />
+            <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1.5 py-0.5 rounded">
+              45° view
+            </span>
+          </div>
+        ) : (
+          <div className="flex items-center justify-between h-14 rounded-md border border-dashed border-border bg-muted/20 px-4">
+            <p className="text-xs text-muted-foreground/70">
+              {photos.length > 0 ? "Will be generated when you save" : "Add photos first"}
+            </p>
+            {photos.length > 0 && (
+              <button
+                onClick={handleRegenerateAltView}
+                disabled={isBusy}
+                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
+              >
+                <Sparkles className="h-3 w-3" />
+                Generate now
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
       {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
       {/* ── Actions ── */}
@@ -406,7 +496,9 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           className="flex-1 gap-2"
         >
           {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving ? "Saving…" : isEditing ? "Update product" : "Save product"}
+          {saving
+            ? (savingStep || "Saving…")
+            : isEditing ? "Update product" : "Save product"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={isBusy}>
           Cancel

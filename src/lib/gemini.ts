@@ -356,6 +356,44 @@ async function warpProductAngle(src: string, roomAngleDeg: number): Promise<stri
   }
 }
 
+/**
+ * Generates a steep-angle (45° elevation) view of a product using Gemini Image.
+ * Called once at product-save time in the admin panel; the result is stored in
+ * Supabase as `image_2` / `topdown.jpg`. At placement time `placeInRoom` uses it
+ * as a 3rd reference image so Gemini can composite from the room's steep camera
+ * without having to extrapolate perspective from flat product photos.
+ *
+ * @param productImgs  Supabase storage URLs or data URLs of the product (perspective + front)
+ * @param furnitureType  e.g. "chair", "sofa", "table" — used in the generation prompt
+ */
+export async function generateProductAltView(
+  productImgs: string[],
+  furnitureType: string,
+): Promise<string> {
+  const dataUrls = await Promise.all(productImgs.slice(0, 2).map(toDataUrl));
+  const prepared = await Promise.all(
+    dataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
+  );
+
+  const prompt =
+    `You receive photos of a ${furnitureType}. ` +
+    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
+    `elevated at approximately 45° above horizontal — ` +
+    `as if you are looking down at it from a 45° angle. ` +
+    `Show the top surface (seat/cushion/tabletop) and the legs or base spreading outward. ` +
+    `Keep the model, materials, colours, stitching details, and proportions ` +
+    `IDENTICAL to the reference photos. ` +
+    `White background. Single object only, centred. No shadows, no room context.`;
+
+  const parts: unknown[] = [
+    { text: prompt },
+    ...prepared.map((img) => ({
+      inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
+    })),
+  ];
+  return callGemini(parts);
+}
+
 export interface ExtractedProductData {
   name:        string;
   description: string;
@@ -621,33 +659,26 @@ export async function placeInRoom(
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
 
   // ── Product image prep ──────────────────────────────────────────────────────
+  // productImages[2] is the pre-computed steep-angle (top-down) view, stored in
+  // Supabase at product-save time via generateProductAltView().
   const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    ? await Promise.all(productImages.slice(0, 3).map(toDataUrl))
     : [];
-  const roomAngle = measurement?.camera_tilt_deg ?? null;
+  const roomAngle      = measurement?.camera_tilt_deg ?? null;
+  const hasPrebuiltAlt = productDataUrls.length >= 3;
 
-  // Prepare base images: white bg + auto-crop margins
   const preparedImgs = await Promise.all(
     productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
   );
 
-  // ── Steep-angle view synthesis ──────────────────────────────────────────────
-  // Disabled: generating a 3rd synthesised reference introduced conflicting views
-  // that confused Gemini's compositing. Keeping the function for future experiments;
-  // the geometric warp handles angle correction for now.
-  const altViewUrl: string | null = null;
-
-  // Apply geometric warp only when no synthesised view is available
+  // Apply geometric warp only for the two standard views and only when no
+  // pre-built alt view exists (the alt view is already at the right angle).
   const productResized: string[] = await Promise.all(
-    preparedImgs.map((img) => {
-      if (altViewUrl) return Promise.resolve(img);        // warp skipped — alt view takes over
+    preparedImgs.map((img, i) => {
+      if (hasPrebuiltAlt || i >= 2) return Promise.resolve(img);
       return roomAngle !== null ? warpProductAngle(img, roomAngle) : Promise.resolve(img);
     }),
   );
-  if (altViewUrl) {
-    const preparedAlt = await prepareProductImage(altViewUrl, 1024, 1024, 0.92);
-    productResized.push(preparedAlt);
-  }
 
   // Only use the erase result if Claude confirmed the target furniture type is present.
   // - measurement === null  → Claude API failed entirely → fall back (use erase result, old behaviour)
@@ -691,8 +722,8 @@ export async function placeInRoom(
   const placePrompt =
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
-    (altViewUrl
-      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image is a synthesised view of the same furniture rendered from a steep downward angle matching this room's camera — treat it as the primary perspective reference.\n`
+    (hasPrebuiltAlt
+      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image shows this furniture from a steep downward angle (~45°) — use it as the primary perspective reference for compositing from the room's camera angle.\n`
       : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
