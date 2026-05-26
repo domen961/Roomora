@@ -294,7 +294,7 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
   const ceilPart  = (m && m.confidence !== "low" && m.ceiling_height_cm)
     ? `, and ${Math.round((dims.height_cm / m.ceiling_height_cm) * 100)}% of the ceiling height (${m.ceiling_height_cm}cm)`
     : "";
-  return ` Scale: the furniture is ${dims.height_cm}cm tall — that is ${doorPct}% as tall as a standard door (~200cm)${ceilPart}. A life-sized piece of furniture is a substantial object; if in doubt, make it LARGER, never smaller.`;
+  return ` Scale: the furniture is ${dims.height_cm}cm tall — that is ${doorPct}% as tall as a standard door (~200cm)${ceilPart}. Match this ratio precisely in the image.`;
 }
 
 /**
@@ -307,35 +307,6 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
  * @param furnitureType - e.g. "chair", "sofa", "table"
  * @returns data URL of the synthesised view, or null on failure
  */
-async function generateAltView(
-  preparedImgs: string[],
-  tiltDeg: number,
-  furnitureType: string,
-): Promise<string | null> {
-  try {
-    const altPrompt =
-      `You receive photos of a ${furnitureType}. ` +
-      `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-      `elevated at approximately ${tiltDeg}° above horizontal — ` +
-      `as if you are standing above it and looking down at that angle. ` +
-      `Show the top surface (seat/cushion/tabletop), armrests or sides from above, ` +
-      `and the legs/base spreading outward and downward. ` +
-      `Keep the model, materials, colours, stitching details, and proportions ` +
-      `IDENTICAL to the reference photos. ` +
-      `White background. Single object only, centred. No shadows, no room context.`;
-
-    const parts: unknown[] = [
-      { text: altPrompt },
-      ...preparedImgs.map((img) => ({
-        inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
-      })),
-    ];
-    return await callGemini(parts);
-  } catch {
-    return null;  // graceful degradation — never blocks placement
-  }
-}
-
 /** Elevation angle of a standard product photo (roughly 28° above horizontal). */
 const PRODUCT_SOURCE_ANGLE = 28;
 /**
@@ -661,15 +632,10 @@ export async function placeInRoom(
   );
 
   // ── Steep-angle view synthesis ──────────────────────────────────────────────
-  // For rooms with a steep camera (≥ 35°), ask Gemini to render the furniture
-  // from that exact elevation — a full "novel view synthesis" pre-pass. This
-  // gives Gemini a reference that already shows correct foreshortening and seat
-  // visibility, so the placement call only needs to composite, not extrapolate.
-  // Skip the geometric warp when a synthesised view is available (it supersedes it).
-  const shouldGenAlt = roomAngle !== null && roomAngle >= 35 && preparedImgs.length > 0;
-  const altViewUrl   = shouldGenAlt
-    ? await generateAltView(preparedImgs, roomAngle!, eraseLabel)
-    : null;
+  // Disabled: generating a 3rd synthesised reference introduced conflicting views
+  // that confused Gemini's compositing. Keeping the function for future experiments;
+  // the geometric warp handles angle correction for now.
+  const altViewUrl: string | null = null;
 
   // Apply geometric warp only when no synthesised view is available
   const productResized: string[] = await Promise.all(
