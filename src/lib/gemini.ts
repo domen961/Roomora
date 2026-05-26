@@ -262,10 +262,17 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
   const parts: string[] = [];
   if (m.camera_height_cm)
     parts.push(`camera is at ~${m.camera_height_cm}cm from the floor`);
-  if (m.camera_angle === "looking_down")
+  if (m.camera_tilt_deg !== null && m.camera_tilt_deg > 5) {
+    const desc = m.camera_tilt_deg < 20 ? "nearly level"
+               : m.camera_tilt_deg < 35 ? "mild downward tilt"
+               : m.camera_tilt_deg < 55 ? "strong downward tilt"
+               : "very steep downward angle";
+    parts.push(`camera looks down at ~${m.camera_tilt_deg}° from horizontal (${desc}) — the furniture's top surface and the top of the backrest are visible; show them accordingly`);
+  } else if (m.camera_angle === "looking_down") {
     parts.push("camera tilts downward — more of the furniture top surface is visible");
-  else if (m.camera_angle === "looking_up")
+  } else if (m.camera_angle === "looking_up") {
     parts.push("camera tilts upward — furniture top surface is mostly hidden");
+  }
   if (m.horizon_pct !== null) {
     const pos = m.horizon_pct < 35 ? "high in the frame"
                : m.horizon_pct > 65 ? "low in the frame"
@@ -277,14 +284,17 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
 }
 
 /**
- * Computes a concrete percentage-based scale hint for the placement prompt.
- * e.g. "the chair (84cm) should span ~32% of the ceiling-to-floor distance in the frame."
- * Giving Gemini a pixel-ratio target is far more reliable than raw centimetre values alone.
+ * Computes a scale hint using a door (200cm) as a universal visible reference.
+ * Door comparison is far more reliable than "% of ceiling height" because a door
+ * is a concrete, universally-recognised object Gemini can anchor to in the image.
  */
 function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): string {
-  if (!m || m.confidence === "low" || !m.ceiling_height_cm || !dims?.height_cm) return "";
-  const pct = Math.round((dims.height_cm / m.ceiling_height_cm) * 100);
-  return ` Scale target: the furniture is ${dims.height_cm}cm tall in a ${m.ceiling_height_cm}cm room — it must occupy approximately ${pct}% of the visible floor-to-ceiling span in the image. If unsure, err larger: furniture that looks life-sized is correct, furniture that looks like a toy is wrong.`;
+  if (!dims?.height_cm) return "";
+  const doorPct   = Math.round((dims.height_cm / 200) * 100);
+  const ceilPart  = (m && m.confidence !== "low" && m.ceiling_height_cm)
+    ? `, and ${Math.round((dims.height_cm / m.ceiling_height_cm) * 100)}% of the ceiling height (${m.ceiling_height_cm}cm)`
+    : "";
+  return ` Scale: the furniture is ${dims.height_cm}cm tall — that is ${doorPct}% as tall as a standard door (~200cm)${ceilPart}. A life-sized piece of furniture is a substantial object; if in doubt, make it LARGER, never smaller.`;
 }
 
 /** Elevation angle of a standard product photo (roughly 28° above horizontal). */
@@ -294,7 +304,7 @@ const PRODUCT_SOURCE_ANGLE = 28;
  * 0 = no warp, 1 = full geometric warp.
  * 0.55 gives a natural-looking result; lower if over-distorted, higher if too subtle.
  */
-const WARP_TUNE = 0.55;
+const WARP_TUNE = 0.35;
 
 /**
  * Applies a strip-based keystone (perspective) warp to a product image so that
@@ -660,9 +670,14 @@ export async function placeInRoom(
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
     `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
     `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
-    `4. The furniture must rest naturally on the floor with no gap — it must not appear to float.\n` +
-    `5. Light it to match the room's light sources — direction, colour temperature, and intensity. The reference was shot under studio lighting; apply this room's actual lighting instead. Cast a realistic shadow beneath it that matches the direction and softness of other shadows in the scene. Reproduce the exact surface qualities from the REFERENCE — matte stays matte, glossy surfaces show realistic reflections, fabric and leather textures stay visible.\n` +
-    `6. Blend its edges naturally into the scene — no hard cuts, no bright outlines, no halo.\n\n` +
+    `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
+    `5. Lighting — study the room carefully before rendering:\n` +
+    `   a. Identify every light source: windows (and which wall they're on), ceiling lights, floor lamps. Note which side of objects the shadows fall toward.\n` +
+    `   b. Apply that exact lighting to the placed object — direction, colour temperature (warm incandescent / cool daylight), and intensity. The reference photo uses neutral studio lighting — completely discard it.\n` +
+    `   c. If the room has backlighting (window behind the subject), the back edges of the furniture get a bright rim; the front face is in relative shadow with warm ambient fill from the floor.\n` +
+    `   d. Material response from the REFERENCE must be preserved: leather and vinyl show sharp specular highlights from the dominant light; fabric and bouclé are diffuse with no strong highlights; wood shows grain texture and a soft sheen.\n` +
+    `   e. The shadow cast on the floor must be directional — matching the angle and softness of other floor shadows in the scene, not a simple round blob.\n` +
+    `6. Blend edges naturally — no hard cuts, bright halos, or visible compositing seams.\n\n` +
     `Output only the composited image. No text.`;
 
   const parts: unknown[] = [
