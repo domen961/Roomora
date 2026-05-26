@@ -36,6 +36,9 @@ Also analyze the camera perspective:
   (0 = very top, 50 = mid-frame, 100 = very bottom)
 - Describe camera tilt: "looking_down" if camera angles noticeably toward the floor,
   "level" if roughly horizontal, "looking_up" if angled upward
+- Estimate camera_tilt_deg: the angle in degrees the camera looks DOWN from horizontal
+  (0 = perfectly level, 30 = gently downward typical standing shot, 50 = noticeably from above,
+  70 = steep downward angle, 90 = straight down). Use reference objects and visible floor area to estimate.
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
@@ -46,7 +49,8 @@ Return ONLY valid JSON (no markdown fences, no extra text):
   "detected_furniture": ["sofa", "chair"],
   "camera_height_cm": <integer or null>,
   "horizon_pct": <0-100 integer or null>,
-  "camera_angle": "looking_down" | "level" | "looking_up" | null
+  "camera_angle": "looking_down" | "level" | "looking_up" | null,
+  "camera_tilt_deg": <0-90 integer or null>
 }
 Confidence: high=door/window clearly visible, medium=multiple reference objects, low=minimal references.`;
 
@@ -60,7 +64,7 @@ Confidence: high=door/window clearly visible, medium=multiple reference objects,
       },
       body: JSON.stringify({
         model:      "claude-haiku-4-5",
-        max_tokens: 512,
+        max_tokens: 640,
         messages: [
           {
             role:    "user",

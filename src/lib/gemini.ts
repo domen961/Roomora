@@ -225,6 +225,7 @@ export interface RoomMeasurement {
   camera_height_cm:   number | null;
   horizon_pct:        number | null;
   camera_angle:       "looking_down" | "level" | "looking_up" | null;
+  camera_tilt_deg:    number | null;  // degrees camera looks down from horizontal (0=level, 90=straight down)
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -273,6 +274,55 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
   }
   if (!parts.length) return "";
   return ` Camera viewpoint: ${parts.join("; ")}.`;
+}
+
+/** Elevation angle of a standard product photo (roughly 28° above horizontal). */
+const PRODUCT_SOURCE_ANGLE = 28;
+/**
+ * Controls warp aggressiveness.
+ * 0 = no warp, 1 = full geometric warp.
+ * 0.55 gives a natural-looking result; lower if over-distorted, higher if too subtle.
+ */
+const WARP_TUNE = 0.55;
+
+/**
+ * Applies a strip-based keystone (perspective) warp to a product image so that
+ * the viewing angle matches the room camera rather than the standard product-photo angle.
+ *
+ * - deltaDeg > 0 (room camera higher) → compress the top → more seat/tabletop visible
+ * - deltaDeg < 0 (room camera lower)  → expand the top  → more front face visible
+ * - |deltaDeg| < 8°                   → skip (imperceptible difference)
+ */
+async function warpProductAngle(src: string, roomAngleDeg: number): Promise<string> {
+  const deltaDeg = roomAngleDeg - PRODUCT_SOURCE_ANGLE;
+  if (Math.abs(deltaDeg) < 8) return src;  // too small to bother
+
+  try {
+    const img = await loadImage(src);
+    const W = img.width;
+    const H = img.height;
+    const canvas = document.createElement("canvas");
+    canvas.width  = W;
+    canvas.height = H;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, W, H);
+
+    // topScale < 1 compresses the top, creating a trapezoid that simulates a higher camera
+    const topScale = Math.max(0.35, 1 - Math.sin(deltaDeg * Math.PI / 180) * WARP_TUNE);
+
+    for (let y = 0; y < H; y++) {
+      const progress = y / H;
+      const scale    = topScale + (1 - topScale) * progress;
+      const rowW     = Math.round(W * scale);
+      const offsetX  = Math.round((W - rowW) / 2);
+      // Draw one scanline of the source into the (possibly narrower) row
+      ctx.drawImage(img, 0, y, W, 1, offsetX, y, rowW, 1);
+    }
+    return canvas.toDataURL("image/jpeg", 0.92);
+  } catch {
+    return src;  // graceful fallback — never blocks placement
+  }
 }
 
 export interface ExtractedProductData {
@@ -514,15 +564,8 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // Load perspective + front product images for Call 2.
-  const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
-    : [];
-  const productResized = await Promise.all(
-    productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
-  );
-
   // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
+  // Product image prep intentionally runs AFTER allSettled so it can use camera_tilt_deg.
   const erasePrompt =
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
@@ -545,6 +588,18 @@ export async function placeInRoom(
   ]);
 
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
+
+  // ── Product image prep + perspective warp (uses camera_tilt_deg from measurement) ──
+  const productDataUrls = productImages.length > 0
+    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+    : [];
+  const roomAngle = measurement?.camera_tilt_deg ?? null;
+  const productResized = await Promise.all(
+    productDataUrls.map(async (img) => {
+      const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+      return roomAngle !== null ? warpProductAngle(prepared, roomAngle) : prepared;
+    }),
+  );
 
   // Only use the erase result if Claude confirmed the target furniture type is present.
   // - measurement === null  → Claude API failed entirely → fall back (use erase result, old behaviour)
