@@ -35,7 +35,8 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
 
   // Photos — pre-filled with existing Supabase URLs when editing
   const [photos,    setPhotos]    = useState<string[]>(initialProduct?.images.filter(Boolean) ?? []);
-  const [photoDrag, setPhotoDrag] = useState(false);
+  const [photoDrag,   setPhotoDrag]   = useState(false);
+  const [previewUrl,  setPreviewUrl]  = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
   // AI top-down views (image_2 = 75° diagonal, image_3 = 75° front)
@@ -225,6 +226,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   };
 
   return (
+    <>
     <div className="flex flex-col gap-6 max-w-lg">
 
       {/* ── URL import ── */}
@@ -407,7 +409,8 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
                 <img
                   src={src}
                   alt={`Photo ${i + 1}`}
-                  className="h-24 w-24 rounded-md object-cover border border-border"
+                  onClick={() => setPreviewUrl(src)}
+                  className="h-24 w-24 rounded-md object-cover border border-border cursor-zoom-in"
                 />
                 <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1.5 py-0.5 rounded">
                   {i === 0 ? "Perspective" : "Front"}
@@ -479,7 +482,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
             </div>
           ) : altView0 ? (
             <div className="relative group">
-              <img src={altView0} alt="AI diagonal top view" className="h-24 w-24 rounded-md object-cover border border-border" />
+              <img src={altView0} alt="AI diagonal top view" onClick={() => setPreviewUrl(altView0)} className="h-24 w-24 rounded-md object-cover border border-border cursor-zoom-in" />
               <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Diagonal</span>
               <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleRegenerateAlt(0)} disabled={isBusy || photos.length === 0} title="Re-generate"
@@ -508,7 +511,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
             </div>
           ) : altView1 ? (
             <div className="relative group">
-              <img src={altView1} alt="AI front top view" className="h-24 w-24 rounded-md object-cover border border-border" />
+              <img src={altView1} alt="AI front top view" onClick={() => setPreviewUrl(altView1)} className="h-24 w-24 rounded-md object-cover border border-border cursor-zoom-in" />
               <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Front</span>
               <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                 <button onClick={() => handleRegenerateAlt(1)} disabled={isBusy || photos.length === 0} title="Re-generate"
@@ -555,5 +558,30 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
       </div>
 
     </div>
+
+    {/* ── Image lightbox ── */}
+    {previewUrl && (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+        onClick={() => setPreviewUrl(null)}
+        onKeyDown={(e) => e.key === "Escape" && setPreviewUrl(null)}
+        tabIndex={-1}
+      >
+        <img
+          src={previewUrl}
+          alt="Preview"
+          className="max-w-full max-h-full rounded-lg shadow-2xl object-contain"
+          style={{ maxWidth: "min(90vw, 900px)", maxHeight: "90vh" }}
+          onClick={(e) => e.stopPropagation()}
+        />
+        <button
+          onClick={() => setPreviewUrl(null)}
+          className="absolute top-4 right-4 h-9 w-9 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+    )}
+    </>
   );
 }
