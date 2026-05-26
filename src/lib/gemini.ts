@@ -226,6 +226,7 @@ export interface RoomMeasurement {
   horizon_pct:        number | null;
   camera_angle:       "looking_down" | "level" | "looking_up" | null;
   camera_tilt_deg:    number | null;  // degrees camera looks down from horizontal (0=level, 90=straight down)
+  visible_refs:       Array<{ name: string; height_cm: number }>;  // visible furniture with estimated heights
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -290,11 +291,29 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
  */
 function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): string {
   if (!dims?.height_cm) return "";
-  const doorPct   = Math.round((dims.height_cm / 200) * 100);
-  const ceilPart  = (m && m.confidence !== "low" && m.ceiling_height_cm)
-    ? `, and ${Math.round((dims.height_cm / m.ceiling_height_cm) * 100)}% of the ceiling height (${m.ceiling_height_cm}cm)`
+  const height = dims.height_cm;
+
+  // Visual anchor: find the visible room object whose height is closest to the product's
+  let anchorPart = "";
+  const refs = m?.visible_refs ?? [];
+  if (refs.length) {
+    const best = refs.reduce((a, b) =>
+      Math.abs(a.height_cm - height) < Math.abs(b.height_cm - height) ? a : b,
+    );
+    const word = height < best.height_cm * 0.88 ? "noticeably shorter than"
+               : height > best.height_cm * 1.12 ? "noticeably taller than"
+               : "roughly the same height as";
+    anchorPart =
+      ` It is ${word} the ${best.name} already visible in the room (~${best.height_cm}cm tall).` +
+      ` Use that object as your primary visual size anchor — their heights must compare correctly in the final image.`;
+  }
+
+  const doorPct  = Math.round((height / 200) * 100);
+  const ceilPart = (m && m.confidence !== "low" && m.ceiling_height_cm)
+    ? `, and ${Math.round((height / m.ceiling_height_cm) * 100)}% as tall as the ceiling (~${m.ceiling_height_cm}cm)`
     : "";
-  return ` Scale: the furniture is ${dims.height_cm}cm tall — that is ${doorPct}% as tall as a standard door (~200cm)${ceilPart}. Match this ratio precisely in the image.`;
+
+  return ` Scale: the furniture is ${height}cm tall — ${doorPct}% as tall as a standard door (~200cm)${ceilPart}.${anchorPart} Match this scale precisely.`;
 }
 
 /**

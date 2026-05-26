@@ -40,6 +40,17 @@ Also analyze the camera perspective:
   (0 = perfectly level, 30 = gently downward typical standing shot, 50 = noticeably from above,
   70 = steep downward angle, 90 = straight down). Use reference objects and visible floor area to estimate.
 
+Also identify up to 3 pieces of furniture clearly visible in the room and estimate their
+real-world heights. Use standard dimensions as a guide:
+- Dresser / sideboard: 75–100cm
+- Bed to top of mattress: 55–65cm; to top of headboard: 90–130cm
+- Bookshelf / wardrobe: 150–200cm
+- Nightstand / bedside table: 55–70cm
+- Sofa back: 80–95cm; chair back: 80–100cm
+- Coffee table: 40–50cm; dining table: 72–80cm
+Return as "visible_refs": [{"name": "wooden dresser on left wall", "height_cm": 85}, ...]
+Up to 3 items. Empty array if nothing is clearly identifiable.
+
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "ceiling_height_cm": <integer or null>,
@@ -50,7 +61,8 @@ Return ONLY valid JSON (no markdown fences, no extra text):
   "camera_height_cm": <integer or null>,
   "horizon_pct": <0-100 integer or null>,
   "camera_angle": "looking_down" | "level" | "looking_up" | null,
-  "camera_tilt_deg": <0-90 integer or null>
+  "camera_tilt_deg": <0-90 integer or null>,
+  "visible_refs": [{"name": "...", "height_cm": <integer>}]
 }
 Confidence: high=door/window clearly visible, medium=multiple reference objects, low=minimal references.`;
 
@@ -64,7 +76,7 @@ Confidence: high=door/window clearly visible, medium=multiple reference objects,
       },
       body: JSON.stringify({
         model:      "claude-haiku-4-5",
-        max_tokens: 640,
+        max_tokens: 800,
         messages: [
           {
             role:    "user",
