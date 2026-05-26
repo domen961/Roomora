@@ -358,33 +358,49 @@ async function warpProductAngle(src: string, roomAngleDeg: number): Promise<stri
 
 /**
  * Generates a steep-angle (75° elevation) view of a product using Gemini Image.
- * Called once at product-save time in the admin panel; the result is stored in
- * Supabase as `image_2` / `topdown.jpg`. At placement time `placeInRoom` uses it
- * as a 3rd reference image so Gemini can composite from the room's steep camera
- * without having to extrapolate perspective from flat product photos.
+ * Called automatically when photos are added in the admin panel; results are stored in
+ * Supabase as `image_2` (perspective alt) and `image_3` (front alt). At placement time
+ * `placeInRoom` uses them as extra reference images so Gemini can composite from the
+ * room's steep camera without having to extrapolate perspective from flat product photos.
  *
- * @param productImgs  Supabase storage URLs or data URLs of the product (perspective + front)
- * @param furnitureType  e.g. "chair", "sofa", "table" — used in the generation prompt
+ * @param productImgs   Supabase storage URLs or data URLs of the product (perspective + front)
+ * @param furnitureType e.g. "chair", "sofa", "table" — used in the generation prompt
+ * @param variant       "perspective" = diagonal overhead view; "front" = straight-on overhead
  */
 export async function generateProductAltView(
   productImgs: string[],
   furnitureType: string,
+  variant: "perspective" | "front" = "perspective",
 ): Promise<string> {
   const dataUrls = await Promise.all(productImgs.slice(0, 2).map(toDataUrl));
   const prepared = await Promise.all(
     dataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
   );
 
-  const prompt =
+  const perspPrompt =
     `You receive photos of a ${furnitureType}. ` +
     `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
     `elevated at approximately 75° above horizontal — almost directly overhead, ` +
-    `as if you are standing directly above it and looking nearly straight down. ` +
+    `from a slightly diagonal (3/4) angle. ` +
     `The top surface (seat/cushion/tabletop) should dominate the frame; ` +
     `legs or base visible only as short stubs at the corners spreading slightly outward. ` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
     `White background. Single object only, centred. No shadows, no room context.`;
+
+  const frontPrompt =
+    `You receive photos of a ${furnitureType}. ` +
+    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
+    `elevated at approximately 75° above horizontal, positioned directly in front of the furniture — ` +
+    `looking steeply down at the front face from above. ` +
+    `The front face is visible at the bottom of the frame, heavily foreshortened; ` +
+    `the top surface occupies most of the upper portion of the frame. ` +
+    `Legs visible only at the bottom corners as short stubs. ` +
+    `Keep the model, materials, colours, stitching details, and proportions ` +
+    `IDENTICAL to the reference photos. ` +
+    `White background. Single object only, centred. No shadows, no room context.`;
+
+  const prompt = variant === "front" ? frontPrompt : perspPrompt;
 
   const parts: unknown[] = [
     { text: prompt },
@@ -660,10 +676,11 @@ export async function placeInRoom(
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
 
   // ── Product image prep ──────────────────────────────────────────────────────
-  // productImages[2] is the pre-computed steep-angle (top-down) view, stored in
-  // Supabase at product-save time via generateProductAltView().
+  // productImages[2] = 75° perspective alt view (topdown.jpg)
+  // productImages[3] = 75° front alt view (topdown_front.jpg)
+  // Both are pre-computed at product-save time via generateProductAltView().
   const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 3).map(toDataUrl))
+    ? await Promise.all(productImages.slice(0, 4).map(toDataUrl))
     : [];
   const roomAngle      = measurement?.camera_tilt_deg ?? null;
   const hasPrebuiltAlt = productDataUrls.length >= 3;
@@ -706,12 +723,15 @@ export async function placeInRoom(
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;
-  const productSlot = numRefs >= 3 ? "second, third, and fourth images"
+  const productSlot = numRefs >= 4 ? "second, third, fourth, and fifth images"
+                    : numRefs >= 3 ? "second, third, and fourth images"
                     : numRefs >= 2 ? "second and third images"
                     : "second image";
-  const framingSlot = numRefs >= 3 ? "fifth image"
+  const framingSlot = numRefs >= 4 ? "sixth image"
+                    : numRefs >= 3 ? "fifth image"
                     : numRefs >= 2 ? "fourth image"
                     : "third image";
+  const numAltViews = Math.max(0, numRefs - 2);
 
   // When the erase step was skipped (target furniture not in room), the background
   // still contains all original furniture — tell Gemini this explicitly so it does
@@ -724,7 +744,10 @@ export async function placeInRoom(
     `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
     `${backgroundDesc}\n\n` +
     (hasPrebuiltAlt
-      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. The LAST reference image shows this furniture from a steep downward angle (~75°, nearly overhead) — use it as the primary perspective reference for compositing from the room's camera angle.\n`
+      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. ` +
+        `The first two are standard product photos. ` +
+        `The last ${numAltViews} image${numAltViews > 1 ? "s show" : " shows"} this exact furniture from a steep downward angle (~75°, nearly overhead) — ` +
+        `use ${numAltViews > 1 ? "these" : "it"} as the primary perspective reference when compositing from the room's camera angle.\n`
       : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +

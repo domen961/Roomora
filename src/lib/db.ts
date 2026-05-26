@@ -49,7 +49,8 @@ export interface DBProduct {
   category:    string | null;
   image_0:     string | null;
   image_1:     string | null;
-  image_2:     string | null;   // AI-generated steep-angle (top-down) view (~45°)
+  image_2:     string | null;   // AI-generated steep-angle diagonal view (~75°)
+  image_3:     string | null;   // AI-generated steep-angle front view (~75°)
   thumbnail:   string | null;
   length_cm:   number | null;
   width_cm:    number | null;
@@ -70,7 +71,7 @@ export function dbRowToProduct(row: DBProduct): Product {
     name:        row.name,
     description: row.description,
     category:    (row.category as FurnitureCategory) ?? null,
-    images:      [row.image_0, row.image_1, row.image_2]
+    images:      [row.image_0, row.image_1, row.image_2, row.image_3]
                    .filter((url): url is string => !!url && url !== ""),
     thumbnail:   row.thumbnail ?? "",
     length_cm:   row.length_cm  ?? null,
@@ -101,10 +102,11 @@ export async function saveProduct(
   dimensions?: ProductDimensions,
   category?:   string | null,
 ): Promise<void> {
-  const [url0, url1, url2] = await Promise.all([
-    uploadSnapshot(merchantId, id, "perspective", images[0]),
-    uploadSnapshot(merchantId, id, "front",       images[1] ?? images[0]),
-    images[2] ? uploadSnapshot(merchantId, id, "topdown", images[2]) : Promise.resolve(null),
+  const [url0, url1, url2, url3] = await Promise.all([
+    uploadSnapshot(merchantId, id, "perspective",   images[0]),
+    uploadSnapshot(merchantId, id, "front",         images[1] ?? images[0]),
+    images[2] ? uploadSnapshot(merchantId, id, "topdown",       images[2]) : Promise.resolve(null),
+    images[3] ? uploadSnapshot(merchantId, id, "topdown_front", images[3]) : Promise.resolve(null),
   ]);
 
   const { error } = await supabase.from("products").insert({
@@ -116,6 +118,7 @@ export async function saveProduct(
     image_0:   url0,
     image_1:   url1,
     image_2:   url2 ?? null,
+    image_3:   url3 ?? null,
     thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
@@ -144,10 +147,11 @@ export async function updateProduct(
       ? uploadSnapshot(merchantId, productId, angle, src)
       : Promise.resolve(src);  // unchanged — exact same Supabase URL, skip re-upload
 
-  const [url0, url1, url2] = await Promise.all([
+  const [url0, url1, url2, url3] = await Promise.all([
     uploadOrReuse(images[0], "perspective"),
     uploadOrReuse(images[1] ?? images[0], "front"),
-    images[2] ? uploadOrReuse(images[2], "topdown") : Promise.resolve(null),
+    images[2] ? uploadOrReuse(images[2], "topdown")       : Promise.resolve(null),
+    images[3] ? uploadOrReuse(images[3], "topdown_front") : Promise.resolve(null),
   ]);
 
   const { error } = await supabase.from("products").update({
@@ -157,6 +161,7 @@ export async function updateProduct(
     image_0:   url0,
     image_1:   url1,
     image_2:   url2 ?? null,
+    image_3:   url3 ?? null,
     thumbnail: null,
     length_cm: dimensions?.length_cm ?? null,
     width_cm:  dimensions?.width_cm  ?? null,
@@ -175,6 +180,7 @@ export async function deleteProduct(
     `${merchantId}/${productId}/perspective.jpg`,
     `${merchantId}/${productId}/front.jpg`,
     `${merchantId}/${productId}/topdown.jpg`,
+    `${merchantId}/${productId}/topdown_front.jpg`,
   ]);
 
   const { error } = await supabase

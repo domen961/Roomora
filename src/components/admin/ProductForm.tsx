@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles, RefreshCw,
 } from "lucide-react";
@@ -38,17 +38,53 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [photoDrag, setPhotoDrag] = useState(false);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  // AI top-down view (image_2)
-  const [altView,           setAltView]           = useState<string | null>(initialProduct?.images[2] ?? null);
-  const [altViewGenerating, setAltViewGenerating] = useState(false);
+  // AI top-down views (image_2 = 75° diagonal, image_3 = 75° front)
+  const [altView0,           setAltView0]           = useState<string | null>(initialProduct?.images[2] ?? null);
+  const [altView1,           setAltView1]           = useState<string | null>(initialProduct?.images[3] ?? null);
+  const [altView0Generating, setAltView0Generating] = useState(false);
+  const [altView1Generating, setAltView1Generating] = useState(false);
+
+  // Refs to avoid stale-closure issues in the auto-generate effect
+  const generating0Ref      = useRef(false);
+  const generating1Ref      = useRef(false);
+  const altView0Ref         = useRef(altView0);
+  const altView1Ref         = useRef(altView1);
+  const prevPhotosLengthRef = useRef(
+    (initialProduct?.images ?? []).filter((_, i) => i < 2).filter(Boolean).length,
+  );
+  altView0Ref.current = altView0;
+  altView1Ref.current = altView1;
+
+  // Auto-generate both alt views whenever a photo is ADDED (count increases)
+  useEffect(() => {
+    const prev = prevPhotosLengthRef.current;
+    prevPhotosLengthRef.current = photos.length;
+    if (photos.length === 0 || photos.length <= prev) return;
+
+    if (!altView0Ref.current && !generating0Ref.current) {
+      generating0Ref.current = true;
+      setAltView0Generating(true);
+      generateProductAltView(photos, category || "chair", "perspective")
+        .then(setAltView0)
+        .catch((e) => console.error("Alt view 0 failed:", e))
+        .finally(() => { generating0Ref.current = false; setAltView0Generating(false); });
+    }
+    if (!altView1Ref.current && !generating1Ref.current) {
+      generating1Ref.current = true;
+      setAltView1Generating(true);
+      generateProductAltView(photos, category || "chair", "front")
+        .then(setAltView1)
+        .catch((e) => console.error("Alt view 1 failed:", e))
+        .finally(() => { generating1Ref.current = false; setAltView1Generating(false); });
+    }
+  }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save
-  const [saving,     setSaving]     = useState(false);
-  const [savingStep, setSavingStep] = useState("");   // shown in button while saving
-  const [saveError,  setSaveError]  = useState("");
+  const [saving,    setSaving]    = useState(false);
+  const [saveError, setSaveError] = useState("");
 
   const canSave = name.trim().length > 0 && photos.length > 0;
-  const isBusy  = importing || saving || addingImageIdx !== null || altViewGenerating;
+  const isBusy  = importing || saving || addingImageIdx !== null || altView0Generating || altView1Generating;
 
   // ── URL import ──────────────────────────────────────────────────────────────
   const handleImport = async () => {
@@ -110,17 +146,25 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     addPhotoFiles(Array.from(e.dataTransfer.files));
   };
 
-  // ── AI top-down view ────────────────────────────────────────────────────────
-  const handleRegenerateAltView = async () => {
-    if (photos.length === 0 || altViewGenerating) return;
-    setAltViewGenerating(true);
-    try {
-      const generated = await generateProductAltView(photos, category || "chair");
-      setAltView(generated);
-    } catch (err) {
-      console.error("Alt view generation failed:", err);
-    } finally {
-      setAltViewGenerating(false);
+  // ── AI top-down views ───────────────────────────────────────────────────────
+  const handleRegenerateAlt = async (variant: 0 | 1) => {
+    if (photos.length === 0) return;
+    if (variant === 0) {
+      if (generating0Ref.current) return;
+      generating0Ref.current = true;
+      setAltView0Generating(true);
+      try {
+        setAltView0(await generateProductAltView(photos, category || "chair", "perspective"));
+      } catch (e) { console.error("Alt view 0 regen failed:", e); }
+      finally { generating0Ref.current = false; setAltView0Generating(false); }
+    } else {
+      if (generating1Ref.current) return;
+      generating1Ref.current = true;
+      setAltView1Generating(true);
+      try {
+        setAltView1(await generateProductAltView(photos, category || "chair", "front"));
+      } catch (e) { console.error("Alt view 1 regen failed:", e); }
+      finally { generating1Ref.current = false; setAltView1Generating(false); }
     }
   };
 
@@ -128,27 +172,14 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const handleSave = async () => {
     if (!canSave || isBusy) return;
     setSaving(true);
-    setSavingStep("");
     setSaveError("");
     try {
-      const baseImages = photos.filter(Boolean);
-
-      // Generate alt view on first save (if not already available)
-      let finalAltView = altView;
-      if (!finalAltView && baseImages.length >= 1) {
-        try {
-          setSavingStep("Generating top view…");
-          finalAltView = await generateProductAltView(baseImages, category || "chair");
-          setAltView(finalAltView);
-        } catch {
-          // non-blocking — product saves fine without the alt view
-        }
-      }
-      setSavingStep("Saving…");
-
-      const finalImages = finalAltView
-        ? [...baseImages.slice(0, 2), finalAltView]
-        : baseImages.slice(0, 2);
+      const baseImages  = photos.filter(Boolean);
+      const finalImages = [
+        ...baseImages.slice(0, 2),
+        ...(altView0 ? [altView0] : []),
+        ...(altView1 ? [altView1] : []),
+      ];
 
       const dims = {
         length_cm: lengthCm ? parseFloat(lengthCm) : null,
@@ -433,56 +464,74 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         />
       </div>
 
-      {/* ── AI top-down view ── */}
+      {/* ── AI top-down views ── */}
       <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs uppercase tracking-widest text-muted-foreground">
-            Top view (AI)
-          </label>
-          {altView && !altViewGenerating && (
-            <button
-              onClick={handleRegenerateAltView}
-              disabled={isBusy || photos.length === 0}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-            >
-              <RefreshCw className="h-3 w-3" />
-              Re-generate
+        <label className="text-xs uppercase tracking-widest text-muted-foreground">
+          Top views (AI) — 75° overhead
+        </label>
+
+        <div className="flex gap-3">
+          {/* Alt view 0: diagonal */}
+          {altView0Generating ? (
+            <div className="flex flex-col items-center justify-center h-24 w-24 rounded-md border border-border bg-muted/30 gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground text-center leading-tight">Diagonal<br/>view…</span>
+            </div>
+          ) : altView0 ? (
+            <div className="relative group">
+              <img src={altView0} alt="AI diagonal top view" className="h-24 w-24 rounded-md object-cover border border-border" />
+              <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Diagonal</span>
+              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => handleRegenerateAlt(0)} disabled={isBusy || photos.length === 0} title="Re-generate"
+                  className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40">
+                  <RefreshCw className="h-2.5 w-2.5" />
+                </button>
+                <button onClick={() => setAltView0(null)} disabled={saving} title="Remove"
+                  className="h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center disabled:opacity-40">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => handleRegenerateAlt(0)} disabled={isBusy || photos.length === 0}
+              className="h-24 w-24 rounded-md border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Sparkles className="h-4 w-4" />
+              <span className="text-[10px] text-center leading-tight">Generate<br/>diagonal</span>
+            </button>
+          )}
+
+          {/* Alt view 1: front */}
+          {altView1Generating ? (
+            <div className="flex flex-col items-center justify-center h-24 w-24 rounded-md border border-border bg-muted/30 gap-1.5">
+              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+              <span className="text-[10px] text-muted-foreground text-center leading-tight">Front<br/>view…</span>
+            </div>
+          ) : altView1 ? (
+            <div className="relative group">
+              <img src={altView1} alt="AI front top view" className="h-24 w-24 rounded-md object-cover border border-border" />
+              <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Front</span>
+              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                <button onClick={() => handleRegenerateAlt(1)} disabled={isBusy || photos.length === 0} title="Re-generate"
+                  className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40">
+                  <RefreshCw className="h-2.5 w-2.5" />
+                </button>
+                <button onClick={() => setAltView1(null)} disabled={saving} title="Remove"
+                  className="h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center disabled:opacity-40">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => handleRegenerateAlt(1)} disabled={isBusy || photos.length === 0}
+              className="h-24 w-24 rounded-md border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+              <Sparkles className="h-4 w-4" />
+              <span className="text-[10px] text-center leading-tight">Generate<br/>front</span>
             </button>
           )}
         </div>
 
-        {altViewGenerating ? (
-          <div className="flex items-center gap-2 h-24 rounded-md border border-border bg-muted/30 px-4">
-            <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            <span className="text-xs text-muted-foreground">Generating 75° view…</span>
-          </div>
-        ) : altView ? (
-          <div className="relative group w-24">
-            <img
-              src={altView}
-              alt="AI top-down view"
-              className="h-24 w-24 rounded-md object-cover border border-border"
-            />
-            <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1.5 py-0.5 rounded">
-              75° view
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center justify-between h-14 rounded-md border border-dashed border-border bg-muted/20 px-4">
-            <p className="text-xs text-muted-foreground/70">
-              {photos.length > 0 ? "Will be generated when you save" : "Add photos first"}
-            </p>
-            {photos.length > 0 && (
-              <button
-                onClick={handleRegenerateAltView}
-                disabled={isBusy}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40"
-              >
-                <Sparkles className="h-3 w-3" />
-                Generate now
-              </button>
-            )}
-          </div>
+        {photos.length === 0 && (
+          <p className="text-xs text-muted-foreground/50">Add product photos above to enable top view generation.</p>
         )}
       </div>
 
@@ -495,9 +544,9 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           disabled={!canSave || isBusy}
           className="flex-1 gap-2"
         >
-          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving
-            ? (savingStep || "Saving…")
+          {(saving || altView0Generating || altView1Generating) && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saving ? "Saving…"
+            : (altView0Generating || altView1Generating) ? "Generating top views…"
             : isEditing ? "Update product" : "Save product"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={isBusy}>
