@@ -464,7 +464,7 @@ function createColorSwatch(hexColor: string): string {
  * @param baseImages    - Supabase storage URLs or data URLs for the product (up to 4)
  * @param furnitureType - e.g. "sofa", "chair", "table"
  * @param targetPart    - natural-language part description, e.g. "the seat cushion"
- * @param modification  - { type: "color", value: "#hex or name" } | { type: "texture", dataUrl: string }
+ * @param modification  - { type: "color", hexColor: "#RRGGBB", description?: "natural language" } | { type: "texture", dataUrl: string }
  * @param onSlotReady   - optional callback fired as each slot resolves (for progressive UI updates)
  */
 export async function generateVariant(
@@ -472,7 +472,7 @@ export async function generateVariant(
   furnitureType: string,
   targetPart:    string,
   modification:
-    | { type: "color";   value: string   }
+    | { type: "color"; hexColor: string; description?: string }
     | { type: "texture"; dataUrl: string },
   onSlotReady?: (index: number, dataUrl: string | null) => void,
 ): Promise<(string | null)[]> {
@@ -487,41 +487,36 @@ export async function generateVariant(
     ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
     : null;
 
-  // Solid swatch for hex colors — provides absolute visual color anchor.
-  const colorSwatch = modification.type === "color" && modification.value.startsWith("#")
-    ? createColorSwatch(modification.value)
+  // Swatch is always generated from hexColor — gives Gemini an absolute visual
+  // anchor so every slot interprets the color identically.
+  const colorSwatch = modification.type === "color"
+    ? createColorSwatch(modification.hexColor)
     : null;
 
-  const colorDesc = modification.type === "color"
-    ? (modification.value.startsWith("#") ? `the color ${modification.value}` : modification.value)
+  // Label for the prompt: prefer natural language description, fall back to hex.
+  const colorLabel = modification.type === "color"
+    ? (modification.description?.trim() || `the color ${modification.hexColor}`)
     : "";
 
   // ── Build parts for a real product photo (slots 0 and 1) ───────────────────
   const buildParts = (prepared: string): unknown[] => {
     if (modification.type === "color") {
-      const swatchLine = colorSwatch
-        ? `The second image is a COLOR SWATCH — a solid square showing the exact target color. ` +
-          `Use it as the absolute reference for hue and saturation. `
-        : "";
       const prompt =
-        `You receive a product photo of a ${furnitureType}` +
-        (colorSwatch ? ` and a COLOR SWATCH` : "") + `.\n` +
-        `Change the color and finish of ${targetPart} to ${colorDesc}.\n` +
-        swatchLine +
+        `You receive a product photo of a ${furnitureType} and a COLOR SWATCH.\n` +
+        `Change the color and finish of ${targetPart} to ${colorLabel}.\n` +
+        `The second image is a COLOR SWATCH — a solid square showing the exact target color. ` +
+        `Use it as the absolute reference for hue and saturation. ` +
         `RULES:\n` +
         `- Only change ${targetPart} — every other part of the furniture stays identical.\n` +
         `- Preserve the original lighting, shadows, and highlights — do not alter the light direction.\n` +
         `- Shape, proportions, stitching, and background must remain pixel-perfect identical.\n` +
         `- White background. Same camera angle. Same lighting direction.\n` +
         `Output: the modified product photo only. No text.`;
-      const parts: unknown[] = [
+      return [
         { text: prompt },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch!) } },
       ];
-      if (colorSwatch) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch) } });
-      }
-      return parts;
     } else {
       const prompt =
         `You receive a product photo of a ${furnitureType} and a TEXTURE REFERENCE image.\n` +

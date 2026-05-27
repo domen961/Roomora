@@ -11,14 +11,179 @@ interface Props {
 
 type Mode = "color" | "texture";
 
+// ── Material / color name → hex lookup ──────────────────────────────────────
+// When the merchant types a description, we resolve it to a hex so a solid
+// color swatch is always sent to Gemini (visual anchor > text description).
+const MATERIAL_COLORS: Record<string, string> = {
+  // ── Wood tones ──
+  "ebony":           "#1C1008",
+  "dark walnut":     "#3B2314",
+  "walnut":          "#5C3317",
+  "medium walnut":   "#6B3A2A",
+  "light walnut":    "#8B6447",
+  "dark oak":        "#4E3524",
+  "oak":             "#A07850",
+  "white oak":       "#C8A97D",
+  "teak":            "#9B6B3C",
+  "mahogany":        "#4E2728",
+  "cherry":          "#722F37",
+  "maple":           "#D4A96A",
+  "ash":             "#C8B99A",
+  "pine":            "#D4B483",
+  "bamboo":          "#C9B06B",
+  "whitewashed":     "#E8E0D4",
+  "bleached wood":   "#DDD5C8",
+  "natural wood":    "#C4A882",
+  "dark wood":       "#3B2A1E",
+
+  // ── Neutrals / fabric ──
+  "pure white":      "#FAFAFA",
+  "white":           "#FFFFFF",
+  "chalk white":     "#F0EDE8",
+  "ivory":           "#FFFFF0",
+  "cream":           "#F5EDD6",
+  "off white":       "#F2EDE4",
+  "linen":           "#D8CAB8",
+  "warm beige":      "#D4B896",
+  "beige":           "#C8B99A",
+  "sand":            "#C2A97D",
+  "greige":          "#B8A898",
+  "taupe":           "#9E8B7A",
+  "camel":           "#C19A6B",
+  "tan":             "#D2B48C",
+
+  // ── Greys ──
+  "light grey":      "#D3D3D3",
+  "silver":          "#C0C0C0",
+  "grey":            "#9E9E9E",
+  "medium grey":     "#808080",
+  "dark grey":       "#606060",
+  "charcoal":        "#36454F",
+  "slate":           "#708090",
+  "graphite":        "#4A4A4A",
+  "anthracite":      "#383E42",
+
+  // ── Dark / black ──
+  "matte black":     "#1C1C1C",
+  "black":           "#1A1A1A",
+
+  // ── Blues ──
+  "navy":            "#1B2A4A",
+  "midnight blue":   "#191970",
+  "dark blue":       "#1A237E",
+  "petrol":          "#1B5E6B",
+  "teal":            "#008080",
+  "dusty blue":      "#7B9BAB",
+  "powder blue":     "#B0C4DE",
+  "sky blue":        "#87CEEB",
+  "denim":           "#1560BD",
+
+  // ── Greens ──
+  "dark green":      "#1B5E20",
+  "forest green":    "#228B22",
+  "bottle green":    "#006A4E",
+  "emerald":         "#50C878",
+  "olive":           "#808000",
+  "sage green":      "#87AE73",
+  "sage":            "#87AE73",
+  "moss":            "#8A9A5B",
+  "eucalyptus":      "#5F8B6E",
+  "mint":            "#98FF98",
+
+  // ── Reds / pinks / terracotta ──
+  "burgundy":        "#722F37",
+  "wine":            "#722F37",
+  "rust":            "#B7410E",
+  "terracotta":      "#C0622B",
+  "brick red":       "#CB4154",
+  "coral":           "#FF6B6B",
+  "blush":           "#E8C5B5",
+  "dusty rose":      "#DCAE9D",
+  "pink":            "#FFC0CB",
+
+  // ── Yellows / browns / warm ──
+  "mustard":         "#FFDB58",
+  "ochre":           "#CC7722",
+  "amber":           "#FFBF00",
+  "caramel":         "#C68642",
+  "cognac":          "#9A3B2A",
+  "tobacco":         "#7F5E3D",
+  "chocolate":       "#3D1C02",
+  "dark brown":      "#4E342E",
+  "brown":           "#795548",
+  "warm brown":      "#8B5E3C",
+
+  // ── Metals ──
+  "matte gold":      "#C5A028",
+  "gold":            "#D4AF37",
+  "brass":           "#B5A642",
+  "antique brass":   "#8A7038",
+  "bronze":          "#8C6239",
+  "copper":          "#B87333",
+  "chrome":          "#DBE2E9",
+  "brushed nickel":  "#C0BDB8",
+
+  // ── Upholstery composites ──
+  "bouclé white":    "#F0EDE8",
+  "bouclé cream":    "#E8E0D0",
+  "bouclé beige":    "#D8C8B0",
+  "velvet navy":     "#1B2A4A",
+  "velvet emerald":  "#50C878",
+  "velvet burgundy": "#722F37",
+  "velvet grey":     "#808080",
+  "velvet teal":     "#008080",
+  "dark leather":    "#3B2314",
+  "cognac leather":  "#9A3B2A",
+  "leather brown":   "#795548",
+};
+
+/**
+ * Resolves a natural-language color description to the closest hex in
+ * MATERIAL_COLORS. Returns null when nothing close enough is found.
+ *
+ * Strategy: exact match → starts-with → longest contained key → word overlap.
+ */
+function resolveColorDescription(desc: string): string | null {
+  const norm = desc.trim().toLowerCase();
+  if (!norm) return null;
+
+  // 1. Exact match
+  if (MATERIAL_COLORS[norm]) return MATERIAL_COLORS[norm];
+
+  // 2. Description starts with a known key (e.g. "dark walnut finish" → "dark walnut")
+  const byPrefix = Object.entries(MATERIAL_COLORS)
+    .filter(([key]) => norm.startsWith(key))
+    .sort((a, b) => b[0].length - a[0].length);
+  if (byPrefix.length) return byPrefix[0][1];
+
+  // 3. Known key is fully contained in description (e.g. "warm dark walnut wood" → "dark walnut")
+  const byContains = Object.entries(MATERIAL_COLORS)
+    .filter(([key]) => norm.includes(key))
+    .sort((a, b) => b[0].length - a[0].length);
+  if (byContains.length) return byContains[0][1];
+
+  // 4. Best word-overlap score (≥2 words must match)
+  const words = norm.split(/\s+/);
+  let bestKey = "", bestScore = 0;
+  for (const key of Object.keys(MATERIAL_COLORS)) {
+    const kw = key.split(/\s+/);
+    const overlap = words.filter((w) => kw.includes(w)).length;
+    if (overlap >= 2 && overlap > bestScore) { bestScore = overlap; bestKey = key; }
+  }
+  if (bestKey) return MATERIAL_COLORS[bestKey];
+
+  return null;
+}
+
 export default function VariantCreator({ product, merchantId }: Props) {
   // ── Controls ─────────────────────────────────────────────────────────────
-  const [mode,         setMode]         = useState<Mode>("color");
-  const [colorHex,     setColorHex]     = useState("#8B6F47");
-  const [colorDesc,    setColorDesc]    = useState("");
-  const [textureUrl,   setTextureUrl]   = useState<string | null>(null);
-  const [targetPart,   setTargetPart]   = useState("");
-  const [variantName,  setVariantName]  = useState("");
+  const [mode,             setMode]             = useState<Mode>("color");
+  const [colorHex,         setColorHex]         = useState("#8B6F47");
+  const [colorDesc,        setColorDesc]        = useState("");
+  const [hexAutoResolved,  setHexAutoResolved]  = useState(false);
+  const [textureUrl,       setTextureUrl]       = useState<string | null>(null);
+  const [targetPart,       setTargetPart]       = useState("");
+  const [variantName,      setVariantName]      = useState("");
 
   // ── Preview (4 slots) ────────────────────────────────────────────────────
   const [previewImages, setPreviewImages] = useState<(string | null)[]>([null, null, null, null]);
@@ -43,6 +208,24 @@ export default function VariantCreator({ product, merchantId }: Props) {
       .finally(() => setVariantsLoaded(true));
   }, [merchantId, product.id]);
 
+  // ── Auto-resolve color description → hex ────────────────────────────────────
+  // Debounced: 400 ms after the user stops typing, look up the description in
+  // MATERIAL_COLORS and update the color picker if a match is found. This ensures
+  // a solid swatch is always sent to Gemini (visual anchor beats text-only prompts).
+  useEffect(() => {
+    if (!colorDesc.trim()) { setHexAutoResolved(false); return; }
+    const timer = setTimeout(() => {
+      const resolved = resolveColorDescription(colorDesc);
+      if (resolved) {
+        setColorHex(resolved);
+        setHexAutoResolved(true);
+      } else {
+        setHexAutoResolved(false);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [colorDesc]);
+
   // ── Handle texture file pick ──────────────────────────────────────────────
   const handleTextureFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -59,7 +242,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
     const modification =
       mode === "color"
-        ? { type: "color" as const, value: colorDesc.trim() || colorHex }
+        ? { type: "color" as const, hexColor: colorHex, description: colorDesc.trim() || undefined }
         : { type: "texture" as const, dataUrl: textureUrl! };
 
     if (mode === "texture" && !textureUrl) return;
@@ -181,15 +364,18 @@ export default function VariantCreator({ product, merchantId }: Props) {
                 <input
                   type="color"
                   value={colorHex}
-                  onChange={(e) => setColorHex(e.target.value)}
+                  onChange={(e) => { setColorHex(e.target.value); setHexAutoResolved(false); }}
                   className="w-10 h-8 rounded border border-border cursor-pointer bg-transparent p-0.5"
                   title="Pick a color"
                 />
                 <span className="text-xs text-muted-foreground font-mono">{colorHex}</span>
+                {hexAutoResolved && (
+                  <span className="text-[10px] text-primary/80 font-medium">✓ matched</span>
+                )}
               </div>
               <input
                 type="text"
-                placeholder="Or describe: warm beige linen, dark walnut…"
+                placeholder="Describe: dark walnut, sage green, warm beige…"
                 value={colorDesc}
                 onChange={(e) => setColorDesc(e.target.value)}
                 className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
