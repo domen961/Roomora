@@ -487,9 +487,7 @@ export async function generateVariant(
     ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
     : null;
 
-  // Solid swatch for hex colors — each call gets an absolute visual color anchor.
-  // Keeping calls independent (no sequential master reference) is more reliable
-  // because synthetic steep-angle alt-views confuse Gemini when given 3+ images.
+  // Solid swatch for hex colors — provides absolute visual color anchor.
   const colorSwatch = modification.type === "color" && modification.value.startsWith("#")
     ? createColorSwatch(modification.value)
     : null;
@@ -498,7 +496,7 @@ export async function generateVariant(
     ? (modification.value.startsWith("#") ? `the color ${modification.value}` : modification.value)
     : "";
 
-  // ── Build parts for a single slot ──────────────────────────────────────────
+  // ── Build parts for a real product photo (slots 0 and 1) ───────────────────
   const buildParts = (prepared: string): unknown[] => {
     if (modification.type === "color") {
       const swatchLine = colorSwatch
@@ -542,22 +540,44 @@ export async function generateVariant(
     }
   };
 
-  // ── All slots run in parallel — swatch provides the shared color anchor ─────
+  // ── Phase 1: apply modification to real product photos (slots 0 and 1) ─────
+  // Slots 2 and 3 are AI-generated synthetic views — applying color to them
+  // independently causes inconsistency because their studio lighting differs.
+  // Instead, derive them from the already-colored slot 0/1 results (Phase 2).
   const results: (string | null)[] = [null, null, null, null];
 
   await Promise.all(
-    dataUrls.map(async (img, i) => {
-      if (!img) {
-        onSlotReady?.(i, null);
-        return;
-      }
+    [0, 1].map(async (i) => {
+      const img = dataUrls[i];
+      if (!img) { onSlotReady?.(i, null); return; }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
         const result   = await callGemini(buildParts(prepared)).catch(() => null);
         results[i] = result;
         onSlotReady?.(i, result);
       } catch {
-        console.warn(`generateVariant: slot ${i} failed — skipping`);
+        console.warn(`generateVariant: slot ${i} failed`);
+        onSlotReady?.(i, null);
+      }
+    }),
+  );
+
+  // ── Phase 2: synthesise steep-angle alt views from already-colored results ──
+  // By generating the 75° views FROM the colored slot 0/1 images, they inherit
+  // the exact same color — no independent generation, no lighting drift.
+  const coloredBase = [results[0], results[1]].filter((u): u is string => u !== null);
+
+  await Promise.all(
+    [2, 3].map(async (i) => {
+      // Only generate if the original product had an image in this slot
+      if (!dataUrls[i] || coloredBase.length === 0) { onSlotReady?.(i, null); return; }
+      try {
+        const variant = i === 2 ? "perspective" : "front";
+        const result  = await generateProductAltView(coloredBase, furnitureType, variant).catch(() => null);
+        results[i] = result;
+        onSlotReady?.(i, result);
+      } catch {
+        console.warn(`generateVariant: alt-view slot ${i} failed`);
         onSlotReady?.(i, null);
       }
     }),
