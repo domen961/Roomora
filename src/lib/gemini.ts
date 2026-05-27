@@ -431,6 +431,25 @@ export async function generateProductAltView(
 }
 
 /**
+ * Renders a 200×200 solid-color JPEG swatch from a hex string.
+ * Included in every color-variant Gemini call as an absolute visual anchor
+ * so all 4 slots interpret the target color identically regardless of angle/lighting.
+ */
+function createColorSwatch(hexColor: string): string {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width  = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = hexColor.startsWith("#") ? hexColor : "#888888";
+    ctx.fillRect(0, 0, 200, 200);
+    return canvas.toDataURL("image/jpeg", 0.95);
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Generates a color or texture variant of a product.
  *
  * Strategy for color consistency:
@@ -468,27 +487,44 @@ export async function generateVariant(
     ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
     : null;
 
+  // For color modifications: render a solid swatch so every call has the same
+  // absolute visual color anchor, independent of angle or lighting variations.
+  const colorSwatch = modification.type === "color" && modification.value.startsWith("#")
+    ? createColorSwatch(modification.value)
+    : null;
+
+  const colorDesc = modification.type === "color"
+    ? (modification.value.startsWith("#") ? `the color ${modification.value}` : modification.value)
+    : "";
+
   // ── Build the MASTER prompt (first call — no reference yet) ─────────────────
   const buildMasterParts = (prepared: string): unknown[] => {
     if (modification.type === "color") {
-      const colorDesc = modification.value.startsWith("#")
-        ? `the color ${modification.value}`
-        : modification.value;
+      const swatchLine = colorSwatch
+        ? `The COLOR SWATCH image shows the exact target color as a solid square — ` +
+          `use it as the absolute reference for hue and saturation. `
+        : "";
       const prompt =
-        `You receive a product photo of a ${furnitureType}. ` +
+        `You receive a product photo of a ${furnitureType}` +
+        (colorSwatch ? ` and a COLOR SWATCH` : "") + `. ` +
         `Change the color and finish of ${targetPart} to ${colorDesc}. ` +
-        `Everything else — shape, proportions, other parts, materials, stitching, and all background — ` +
+        swatchLine +
+        `Everything else — shape, proportions, other parts, materials, stitching, and background — ` +
         `must remain pixel-perfect identical. ` +
         `White background. Same camera angle. Same lighting. ` +
         `Output: the modified product photo only. No text.`;
-      return [
+      const parts: unknown[] = [
         { text: prompt },
         { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
       ];
+      if (colorSwatch) {
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch) } });
+      }
+      return parts;
     } else {
       const prompt =
-        `You receive a product photo of a ${furnitureType} and a texture reference image. ` +
-        `Apply the exact material and texture shown in the reference image to ${targetPart} of the furniture. ` +
+        `You receive a product photo of a ${furnitureType} and a TEXTURE REFERENCE image. ` +
+        `Apply the exact material and texture shown in the TEXTURE REFERENCE to ${targetPart} of the furniture. ` +
         `Maintain the original 3D shape, proportions, and form completely. ` +
         `All other parts, background, and lighting must remain pixel-perfect identical. ` +
         `White background. Same camera angle. Same lighting. ` +
@@ -501,25 +537,56 @@ export async function generateVariant(
     }
   };
 
-  // ── Build REFERENCE prompt (subsequent calls — use master result as anchor) ──
+  // ── Build REFERENCE prompt (subsequent calls — master + swatch as dual anchor) ──
   const buildReferenceParts = (prepared: string, masterResult: string): unknown[] => {
-    const prompt =
-      `You receive two photos:\n` +
-      `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
-      `2. COLOR REFERENCE: The same ${furnitureType} with ${targetPart} already changed to the target color/material.\n\n` +
-      `Your task: Apply the EXACT SAME color, material, and finish to ${targetPart} in the BASE IMAGE ` +
-      `as shown in the COLOR REFERENCE. ` +
-      `Match the hue, saturation, brightness, surface sheen, and texture grain precisely — ` +
-      `the COLOR REFERENCE is the ground truth. ` +
-      `Everything else (shape, proportions, other parts, background, lighting) must remain ` +
-      `pixel-perfect identical to the BASE IMAGE. ` +
-      `White background. Same camera angle as BASE IMAGE. ` +
-      `Output: the modified product photo only. No text.`;
-    return [
-      { text: prompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },         // BASE IMAGE
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },     // COLOR REFERENCE
-    ];
+    if (modification.type === "color") {
+      const swatchNote = colorSwatch
+        ? `\n3. COLOR SWATCH: A solid square showing the exact target color — match this hue and saturation precisely.\n`
+        : "";
+      const swatchInstruction = colorSwatch
+        ? `Use the COLOR SWATCH as the absolute hue/saturation reference. ` +
+          `Use the REFERENCE IMAGE to understand the material finish and texture type. `
+        : `Use the REFERENCE IMAGE as the absolute color/material reference. `;
+      const prompt =
+        `You receive:\n` +
+        `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
+        `2. REFERENCE IMAGE: The same ${furnitureType} with ${targetPart} already modified to the target color.\n` +
+        swatchNote +
+        `\nYour task: Apply the EXACT SAME color, material, and finish to ${targetPart} in the BASE IMAGE.\n` +
+        swatchInstruction +
+        `CRITICAL: preserve the lighting and shadows from the BASE IMAGE — do NOT copy the lighting from the REFERENCE IMAGE. ` +
+        `Only the material's base color and finish should change; the light direction and intensity stay exactly as in the BASE IMAGE. ` +
+        `Everything else (shape, proportions, other parts, background) must remain pixel-perfect identical to the BASE IMAGE. ` +
+        `White background. Same camera angle as BASE IMAGE. ` +
+        `Output: the modified product photo only. No text.`;
+      const parts: unknown[] = [
+        { text: prompt },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },      // BASE IMAGE
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },  // REFERENCE IMAGE
+      ];
+      if (colorSwatch) {
+        parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch) } });
+      }
+      return parts;
+    } else {
+      // Texture: use master as style reference + texture image as material reference
+      const prompt =
+        `You receive:\n` +
+        `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
+        `2. REFERENCE IMAGE: The same furniture with the texture modification already applied.\n` +
+        `3. TEXTURE REFERENCE: The source material/texture to apply.\n\n` +
+        `Apply the same texture and material finish to ${targetPart} as shown in both the REFERENCE IMAGE and the TEXTURE REFERENCE. ` +
+        `Preserve the lighting and shadows from the BASE IMAGE exactly. ` +
+        `Everything else must remain pixel-perfect identical to the BASE IMAGE. ` +
+        `White background. Same camera angle as BASE IMAGE. ` +
+        `Output: the modified product photo only. No text.`;
+      return [
+        { text: prompt },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared!) } },
+      ];
+    }
   };
 
   // ── Step 1: Generate MASTER from the first available slot ───────────────────
