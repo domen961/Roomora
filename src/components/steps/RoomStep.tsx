@@ -8,12 +8,13 @@ import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
 interface Props {
-  product:           { images: string[]; description: string; name: string; id: string; category?: string | null; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
-  merchantId:        string;
-  onResult:          (resultUrl: string) => void;
-  onBack:            () => void;
-  onPhotoReady?:     (photo: string) => void;  // fires before processing — lets parent store room photo
-  autoProcessPhoto?: string;                    // if set, auto-process this photo on mount (regenerate)
+  product:                { images: string[]; description: string; name: string; id: string; category?: string | null; length_cm?: number | null; width_cm?: number | null; height_cm?: number | null };
+  merchantId:             string;
+  onResult:               (resultUrl: string) => void;
+  onBack:                 () => void;
+  onPhotoReady?:          (photo: string) => void;  // fires before processing — lets parent store room photo
+  autoProcessPhoto?:      string;                    // if set, auto-process this photo on mount (regenerate)
+  productImagesOverride?: string[];                  // when a variant is selected, use these images instead of product.images
 }
 
 const isMobile =
@@ -23,7 +24,7 @@ const isMobile =
 
 type Phase = "idle" | "processing" | "error";
 
-export default function RoomStep({ product, merchantId, onResult, onBack, onPhotoReady, autoProcessPhoto }: Props) {
+export default function RoomStep({ product, merchantId, onResult, onBack, onPhotoReady, autoProcessPhoto, productImagesOverride }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -121,7 +122,8 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
       onPhotoReady?.(roomPhoto);   // notify parent so it can store photo for regenerate
       setPhase("processing");
       try {
-        const result = await placeInRoom(product.images, roomPhoto, product.name, product.description, undefined, product.category);
+        const activeImages = productImagesOverride ?? product.images;
+        const result = await placeInRoom(activeImages, roomPhoto, product.name, product.description, undefined, product.category);
 
         // Save compressed result back to room_captures so phone can display it
         if (captureToken) {

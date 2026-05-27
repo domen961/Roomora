@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import RoomStep from "@/components/steps/RoomStep";
 import ResultStep from "@/components/steps/ResultStep";
-import { getProducts } from "@/lib/db";
+import { getProducts, getVariants, type ProductVariant } from "@/lib/db";
 import type { Product } from "@/lib/products";
 
 type Phase = "loading" | "room" | "result" | "error";
@@ -13,6 +13,8 @@ export default function TryPage() {
 
   const [phase,         setPhase]         = useState<Phase>("loading");
   const [product,       setProduct]       = useState<{ id: string; images: string[]; description: string; name: string; length_cm: number | null; width_cm: number | null; height_cm: number | null } | null>(null);
+  const [variants,      setVariants]      = useState<ProductVariant[]>([]);
+  const [variantIndex,  setVariantIndex]  = useState(0);   // 0 = base product
   const [result,        setResult]        = useState<string | null>(null);
   const [error,         setError]         = useState("");
   const [lastRoomPhoto, setLastRoomPhoto] = useState<string>("");
@@ -47,6 +49,10 @@ export default function TryPage() {
           return;
         }
         setProduct({ id: found.id, images: found.images, description: found.description, name: found.name, length_cm: found.length_cm, width_cm: found.width_cm, height_cm: found.height_cm });
+        // Load variants alongside product
+        getVariants(shopId!, found.id)
+          .then(setVariants)
+          .catch(console.error);
         setPhase("room");
       })
       .catch((err: Error) => { setError(err.message); setPhase("error"); });
@@ -91,15 +97,63 @@ export default function TryPage() {
   }
 
   if (phase === "room" && product) {
+    const activeImages = variantIndex === 0
+      ? product.images
+      : (variants[variantIndex - 1]?.images ?? product.images);
+
     return (
-      <RoomStep
-        product={product}
-        merchantId={shopId!}
-        onPhotoReady={(photo) => setLastRoomPhoto(photo)}
-        autoProcessPhoto={regenerating ? lastRoomPhoto : undefined}
-        onResult={(r) => { setRegenerating(false); setResult(r); setPhase("result"); }}
-        onBack={handleClose}
-      />
+      <div className="relative">
+        <RoomStep
+          product={product}
+          merchantId={shopId!}
+          onPhotoReady={(photo) => setLastRoomPhoto(photo)}
+          autoProcessPhoto={regenerating ? lastRoomPhoto : undefined}
+          onResult={(r) => { setRegenerating(false); setResult(r); setPhase("result"); }}
+          onBack={handleClose}
+          productImagesOverride={variantIndex !== 0 ? activeImages : undefined}
+        />
+
+        {/* Variant thumbnail strip — shown only when variants exist */}
+        {variants.length > 0 && (
+          <div className="absolute bottom-28 left-0 right-0 flex justify-center pointer-events-none z-10">
+            <div className="flex gap-2 bg-black/60 backdrop-blur-sm rounded-full px-3 py-2 pointer-events-auto">
+              {/* Base */}
+              <button
+                onClick={() => setVariantIndex(0)}
+                className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all flex-shrink-0 ${
+                  variantIndex === 0 ? "border-white" : "border-white/30"
+                }`}
+              >
+                {product.images[0] ? (
+                  <img src={product.images[0]} alt="Base" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full bg-white/10" />
+                )}
+              </button>
+
+              {/* Variants */}
+              {variants.map((v, i) => (
+                <button
+                  key={v.id}
+                  onClick={() => setVariantIndex(i + 1)}
+                  className={`relative w-10 h-10 rounded-full overflow-hidden border-2 transition-all flex-shrink-0 ${
+                    variantIndex === i + 1 ? "border-white" : "border-white/30"
+                  }`}
+                  title={v.name}
+                >
+                  {v.images[0] ? (
+                    <img src={v.images[0]} alt={v.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="w-full h-full bg-white/20 flex items-center justify-center">
+                      <span className="text-[8px] text-white/60">{v.name.slice(0, 2)}</span>
+                    </div>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     );
   }
 

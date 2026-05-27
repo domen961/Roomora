@@ -2,9 +2,10 @@ import { useParams } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
 import { Camera, Download, ImageIcon, Loader2, AlertCircle, RefreshCw, RotateCcw, Share2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { getProducts } from "@/lib/db";
+import { getProducts, getVariants, type ProductVariant } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
 import Logo from "@/components/Logo";
+import VariantRevolver from "@/components/VariantRevolver";
 import type { Product } from "@/lib/products";
 
 type Phase = "idle" | "generating" | "result" | "error";
@@ -19,14 +20,22 @@ export default function CapturePage() {
   const isDirectMode = !!(merchantId && productId);
 
   // Product (loaded when in direct mode)
-  const [product, setProduct] = useState<Product | null>(null);
+  const [product,       setProduct]       = useState<Product | null>(null);
+  const [variants,      setVariants]      = useState<ProductVariant[]>([]);
+  const [variantIndex,  setVariantIndex]  = useState(0);   // 0 = base product
 
   useEffect(() => {
     if (!isDirectMode || !merchantId || !productId) return;
     getProducts(merchantId)
       .then((list) => {
         const p = list.find((p) => p.id === productId);
-        if (p) setProduct(p);
+        if (p) {
+          setProduct(p);
+          // Load variants alongside product
+          getVariants(merchantId, productId)
+            .then(setVariants)
+            .catch(console.error);
+        }
       })
       .catch(console.error);
   }, [isDirectMode, merchantId, productId]);
@@ -86,8 +95,13 @@ export default function CapturePage() {
     try {
       if (isDirectMode && product) {
         // ── DIRECT MODE: phone runs Gemini itself ────────────────────────────
+        // Use the selected variant's images, or the base product images if index 0
+        const activeImages = variantIndex === 0
+          ? product.images
+          : (variants[variantIndex - 1]?.images ?? product.images);
+
         const result = await placeInRoom(
-          product.images,
+          activeImages,
           photo,
           product.name,
           product.description,
@@ -361,7 +375,16 @@ export default function CapturePage() {
                 aria-label="Take photo">
                 <Camera className="h-9 w-9 text-white" />
               </button>
-              <div className="w-14 h-14" />
+              {variants.length > 0 ? (
+                <VariantRevolver
+                  base={{ name: product?.name ?? "", imageUrl: product?.images[0] ?? null }}
+                  variants={variants}
+                  selectedIndex={variantIndex}
+                  onSelect={setVariantIndex}
+                />
+              ) : (
+                <div className="w-14 h-14" />
+              )}
             </div>
             <p className="text-xs text-white/50">Natural lighting gives the best results</p>
           </div>

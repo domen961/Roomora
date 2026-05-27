@@ -4,6 +4,7 @@ import { Plus, LogOut, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "@/components/Logo";
 import ProductForm from "./ProductForm";
+import VariantCreator from "./VariantCreator";
 import CatalogGrid from "./CatalogGrid";
 import EmbedSetup from "./EmbedSetup";
 import { useAuth } from "@/hooks/useAuth";
@@ -133,7 +134,7 @@ export default function AdminPage() {
         )}
 
         {/* ── Main ── */}
-        <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8">
+        <main className={`flex-1 mx-auto w-full px-4 py-8 ${inForm && view === "edit" ? "max-w-6xl" : "max-w-4xl"}`}>
 
           {/* ── FORM VIEW (add or edit) — catalog completely hidden ── */}
           {inForm && (
@@ -148,19 +149,32 @@ export default function AdminPage() {
                 </button>
               </div>
 
-              <div className="rounded-lg border border-border bg-card p-6">
-                <h2 className="text-base font-medium mb-5">
-                  {view === "edit" && editingProduct
-                    ? `Edit — ${editingProduct.name}`
-                    : "New product"}
-                </h2>
-                <ProductForm
-                  key={editingProduct?.id ?? "new"}
-                  merchantId={activeMerchantId}
-                  initialProduct={view === "edit" ? editingProduct ?? undefined : undefined}
-                  onSave={backToCatalog}
-                  onCancel={backToCatalog}
-                />
+              <div className={`flex gap-6 ${view === "edit" ? "flex-col lg:flex-row" : "flex-col"}`}>
+                {/* Product form */}
+                <div className="rounded-lg border border-border bg-card p-6 lg:max-w-lg w-full">
+                  <h2 className="text-base font-medium mb-5">
+                    {view === "edit" && editingProduct
+                      ? `Edit — ${editingProduct.name}`
+                      : "New product"}
+                  </h2>
+                  <ProductForm
+                    key={editingProduct?.id ?? "new"}
+                    merchantId={activeMerchantId}
+                    initialProduct={view === "edit" ? editingProduct ?? undefined : undefined}
+                    onSave={backToCatalog}
+                    onCancel={backToCatalog}
+                  />
+                </div>
+
+                {/* Variant Creator — only shown when editing an existing product */}
+                {view === "edit" && editingProduct && (
+                  <div className="rounded-lg border border-border bg-card p-6 flex-1 min-w-0">
+                    <VariantCreator
+                      product={editingProduct}
+                      merchantId={activeMerchantId}
+                    />
+                  </div>
+                )}
               </div>
             </div>
           )}

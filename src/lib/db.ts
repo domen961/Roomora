@@ -192,6 +192,124 @@ export async function deleteProduct(
   if (error) throw new Error(error.message);
 }
 
+// ── Product Variant CRUD ───────────────────────────────────────────────────────
+
+export interface ProductVariant {
+  id:         string;
+  product_id: string;
+  name:       string;
+  images:     string[];   // [image_0..image_3] filtered non-null
+}
+
+async function uploadVariantSnapshot(
+  merchantId: string,
+  productId:  string,
+  variantId:  string,
+  angle:      string,
+  imageSource: string,
+): Promise<string> {
+  let blob: Blob;
+
+  if (imageSource.startsWith("data:")) {
+    const res = await fetch(imageSource);
+    blob = await res.blob();
+  } else {
+    const proxyRes = await fetch(
+      `/api/scrape?url=${encodeURIComponent(imageSource)}&type=image`,
+    );
+    if (!proxyRes.ok) throw new Error("Image proxy download failed");
+    const { data, mimeType } = await proxyRes.json();
+    const bytes = Uint8Array.from(atob(data), (c) => c.charCodeAt(0));
+    blob = new Blob([bytes], { type: mimeType ?? "image/jpeg" });
+  }
+
+  const path = `${merchantId}/${productId}/variants/${variantId}/${angle}.jpg`;
+
+  const { error } = await supabase.storage
+    .from("product-images")
+    .upload(path, blob, { contentType: "image/jpeg", upsert: true });
+
+  if (error) throw new Error(`Storage upload failed: ${error.message}`);
+
+  const { data } = supabase.storage.from("product-images").getPublicUrl(path);
+  return `${data.publicUrl}?v=${Date.now()}`;
+}
+
+/** Fetch all variants for a product */
+export async function getVariants(
+  merchantId: string,
+  productId:  string,
+): Promise<ProductVariant[]> {
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("*")
+    .eq("merchant_id", merchantId)
+    .eq("product_id",  productId)
+    .order("created_at", { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((row: Record<string, unknown>) => ({
+    id:         row.id         as string,
+    product_id: row.product_id as string,
+    name:       row.name       as string,
+    images:     [row.image_0, row.image_1, row.image_2, row.image_3]
+                  .filter((url): url is string => typeof url === "string" && url !== ""),
+  }));
+}
+
+/** Save a new variant — uploads up to 4 images to variants/ sub-path, inserts row */
+export async function saveVariant(
+  merchantId: string,
+  productId:  string,
+  variantId:  string,
+  name:       string,
+  images:     (string | null)[],   // up to 4 slots; null = slot was not generated
+): Promise<void> {
+  const ANGLES = ["perspective", "front", "topdown", "topdown_front"] as const;
+  const urls = await Promise.all(
+    ANGLES.map((angle, i) => {
+      const img = images[i] ?? null;
+      return img
+        ? uploadVariantSnapshot(merchantId, productId, variantId, angle, img)
+        : Promise.resolve(null);
+    }),
+  );
+
+  const { error } = await supabase.from("product_variants").insert({
+    id:          variantId,
+    product_id:  productId,
+    merchant_id: merchantId,
+    name,
+    image_0:     urls[0] ?? null,
+    image_1:     urls[1] ?? null,
+    image_2:     urls[2] ?? null,
+    image_3:     urls[3] ?? null,
+  });
+
+  if (error) throw new Error(error.message);
+}
+
+/** Delete a variant and its storage files */
+export async function deleteVariant(
+  merchantId: string,
+  productId:  string,
+  variantId:  string,
+): Promise<void> {
+  const ANGLES = ["perspective", "front", "topdown", "topdown_front"];
+  await supabase.storage.from("product-images").remove(
+    ANGLES.map((a) => `${merchantId}/${productId}/variants/${variantId}/${a}.jpg`),
+  );
+
+  const { error } = await supabase
+    .from("product_variants")
+    .delete()
+    .eq("id",          variantId)
+    .eq("product_id",  productId)
+    .eq("merchant_id", merchantId);
+
+  if (error) throw new Error(error.message);
+}
+
 /** Fetch all merchants — superadmin only (RLS enforced) */
 export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null }[]> {
   const { data, error } = await supabase

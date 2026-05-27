@@ -430,6 +430,88 @@ export async function generateProductAltView(
   return callGemini(parts);
 }
 
+/**
+ * Generates a color or texture variant of a product.
+ * Runs up to 4 parallel Gemini calls — one per base image slot.
+ * Null is returned for slots where no base image exists or where generation fails.
+ *
+ * @param baseImages    - Supabase storage URLs or data URLs for the product (up to 4)
+ * @param furnitureType - e.g. "sofa", "chair", "table"
+ * @param targetPart    - natural-language part description, e.g. "the seat cushion"
+ * @param modification  - { type: "color", value: "#hex or name" } | { type: "texture", dataUrl: string }
+ */
+export async function generateVariant(
+  baseImages:   string[],
+  furnitureType: string,
+  targetPart:    string,
+  modification:
+    | { type: "color";   value: string   }
+    | { type: "texture"; dataUrl: string },
+): Promise<(string | null)[]> {
+  // Prepare base images (white bg + auto-crop)
+  const dataUrls = await Promise.all(
+    baseImages.slice(0, 4).map((img) => toDataUrl(img).catch(() => null)),
+  );
+
+  const results = await Promise.all(
+    dataUrls.map(async (img, i): Promise<string | null> => {
+      if (!img) return null;
+
+      try {
+        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+
+        let parts: unknown[];
+
+        if (modification.type === "color") {
+          const colorDesc = modification.value.startsWith("#")
+            ? `the color ${modification.value}`
+            : modification.value;
+
+          const prompt =
+            `You receive a product photo of a ${furnitureType}. ` +
+            `Change the color and finish of ${targetPart} to ${colorDesc}. ` +
+            `Everything else — shape, proportions, other parts, materials, stitching, and all background — ` +
+            `must remain pixel-perfect identical. ` +
+            `White background. Same camera angle. Same lighting. ` +
+            `Output: the modified product photo only. No text.`;
+
+          parts = [
+            { text: prompt },
+            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+          ];
+        } else {
+          // texture modification — send product + texture reference
+          const texPrepared = await toDataUrl(modification.dataUrl)
+            .then((d) => resizeImage(d, 512, 512, 0.85));
+
+          const prompt =
+            `You receive a product photo of a ${furnitureType} and a texture reference image. ` +
+            `Apply the exact material and texture shown in the reference image to ${targetPart} of the furniture. ` +
+            `Maintain the original 3D shape, proportions, and form of the furniture completely. ` +
+            `All other parts, background, and lighting must remain pixel-perfect identical. ` +
+            `White background. Same camera angle. Same lighting. ` +
+            `Output: the modified product photo only. No text.`;
+
+          parts = [
+            { text: prompt },
+            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared) } },
+          ];
+        }
+
+        return await callGemini(parts);
+      } catch {
+        console.warn(`generateVariant: slot ${i} failed — skipping`);
+        return null;
+      }
+    }),
+  );
+
+  // Pad to 4 slots with nulls for any images not in baseImages
+  while (results.length < 4) results.push(null);
+  return results;
+}
+
 export interface ExtractedProductData {
   name:        string;
   description: string;
