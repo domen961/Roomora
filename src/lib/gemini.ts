@@ -487,8 +487,9 @@ export async function generateVariant(
     ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
     : null;
 
-  // For color modifications: render a solid swatch so every call has the same
-  // absolute visual color anchor, independent of angle or lighting variations.
+  // Solid swatch for hex colors — each call gets an absolute visual color anchor.
+  // Keeping calls independent (no sequential master reference) is more reliable
+  // because synthetic steep-angle alt-views confuse Gemini when given 3+ images.
   const colorSwatch = modification.type === "color" && modification.value.startsWith("#")
     ? createColorSwatch(modification.value)
     : null;
@@ -497,21 +498,23 @@ export async function generateVariant(
     ? (modification.value.startsWith("#") ? `the color ${modification.value}` : modification.value)
     : "";
 
-  // ── Build the MASTER prompt (first call — no reference yet) ─────────────────
-  const buildMasterParts = (prepared: string): unknown[] => {
+  // ── Build parts for a single slot ──────────────────────────────────────────
+  const buildParts = (prepared: string): unknown[] => {
     if (modification.type === "color") {
       const swatchLine = colorSwatch
-        ? `The COLOR SWATCH image shows the exact target color as a solid square — ` +
-          `use it as the absolute reference for hue and saturation. `
+        ? `The second image is a COLOR SWATCH — a solid square showing the exact target color. ` +
+          `Use it as the absolute reference for hue and saturation. `
         : "";
       const prompt =
         `You receive a product photo of a ${furnitureType}` +
-        (colorSwatch ? ` and a COLOR SWATCH` : "") + `. ` +
-        `Change the color and finish of ${targetPart} to ${colorDesc}. ` +
+        (colorSwatch ? ` and a COLOR SWATCH` : "") + `.\n` +
+        `Change the color and finish of ${targetPart} to ${colorDesc}.\n` +
         swatchLine +
-        `Everything else — shape, proportions, other parts, materials, stitching, and background — ` +
-        `must remain pixel-perfect identical. ` +
-        `White background. Same camera angle. Same lighting. ` +
+        `RULES:\n` +
+        `- Only change ${targetPart} — every other part of the furniture stays identical.\n` +
+        `- Preserve the original lighting, shadows, and highlights — do not alter the light direction.\n` +
+        `- Shape, proportions, stitching, and background must remain pixel-perfect identical.\n` +
+        `- White background. Same camera angle. Same lighting direction.\n` +
         `Output: the modified product photo only. No text.`;
       const parts: unknown[] = [
         { text: prompt },
@@ -523,11 +526,13 @@ export async function generateVariant(
       return parts;
     } else {
       const prompt =
-        `You receive a product photo of a ${furnitureType} and a TEXTURE REFERENCE image. ` +
-        `Apply the exact material and texture shown in the TEXTURE REFERENCE to ${targetPart} of the furniture. ` +
-        `Maintain the original 3D shape, proportions, and form completely. ` +
-        `All other parts, background, and lighting must remain pixel-perfect identical. ` +
-        `White background. Same camera angle. Same lighting. ` +
+        `You receive a product photo of a ${furnitureType} and a TEXTURE REFERENCE image.\n` +
+        `Apply the exact material and texture shown in the TEXTURE REFERENCE to ${targetPart} of the furniture.\n` +
+        `RULES:\n` +
+        `- Only change ${targetPart} — every other part stays identical.\n` +
+        `- Preserve the original lighting, shadows, and highlights.\n` +
+        `- Maintain the original 3D shape and proportions completely.\n` +
+        `- White background. Same camera angle. Same lighting direction.\n` +
         `Output: the modified product photo only. No text.`;
       return [
         { text: prompt },
@@ -537,86 +542,18 @@ export async function generateVariant(
     }
   };
 
-  // ── Build REFERENCE prompt (subsequent calls — master + swatch as dual anchor) ──
-  const buildReferenceParts = (prepared: string, masterResult: string): unknown[] => {
-    if (modification.type === "color") {
-      const swatchNote = colorSwatch
-        ? `\n3. COLOR SWATCH: A solid square showing the exact target color — match this hue and saturation precisely.\n`
-        : "";
-      const swatchInstruction = colorSwatch
-        ? `Use the COLOR SWATCH as the absolute hue/saturation reference. ` +
-          `Use the REFERENCE IMAGE to understand the material finish and texture type. `
-        : `Use the REFERENCE IMAGE as the absolute color/material reference. `;
-      const prompt =
-        `You receive:\n` +
-        `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
-        `2. REFERENCE IMAGE: The same ${furnitureType} with ${targetPart} already modified to the target color.\n` +
-        swatchNote +
-        `\nYour task: Apply the EXACT SAME color, material, and finish to ${targetPart} in the BASE IMAGE.\n` +
-        swatchInstruction +
-        `CRITICAL: preserve the lighting and shadows from the BASE IMAGE — do NOT copy the lighting from the REFERENCE IMAGE. ` +
-        `Only the material's base color and finish should change; the light direction and intensity stay exactly as in the BASE IMAGE. ` +
-        `Everything else (shape, proportions, other parts, background) must remain pixel-perfect identical to the BASE IMAGE. ` +
-        `White background. Same camera angle as BASE IMAGE. ` +
-        `Output: the modified product photo only. No text.`;
-      const parts: unknown[] = [
-        { text: prompt },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },      // BASE IMAGE
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },  // REFERENCE IMAGE
-      ];
-      if (colorSwatch) {
-        parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch) } });
-      }
-      return parts;
-    } else {
-      // Texture: use master as style reference + texture image as material reference
-      const prompt =
-        `You receive:\n` +
-        `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
-        `2. REFERENCE IMAGE: The same furniture with the texture modification already applied.\n` +
-        `3. TEXTURE REFERENCE: The source material/texture to apply.\n\n` +
-        `Apply the same texture and material finish to ${targetPart} as shown in both the REFERENCE IMAGE and the TEXTURE REFERENCE. ` +
-        `Preserve the lighting and shadows from the BASE IMAGE exactly. ` +
-        `Everything else must remain pixel-perfect identical to the BASE IMAGE. ` +
-        `White background. Same camera angle as BASE IMAGE. ` +
-        `Output: the modified product photo only. No text.`;
-      return [
-        { text: prompt },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared!) } },
-      ];
-    }
-  };
-
-  // ── Step 1: Generate MASTER from the first available slot ───────────────────
-  const masterIndex = dataUrls.findIndex((u) => u !== null);
-  if (masterIndex === -1) return [null, null, null, null];
-
+  // ── All slots run in parallel — swatch provides the shared color anchor ─────
   const results: (string | null)[] = [null, null, null, null];
 
-  const masterBase    = await prepareProductImage(dataUrls[masterIndex]!, 1024, 1024, 0.92);
-  const masterResult  = await callGemini(buildMasterParts(masterBase)).catch(() => null);
-  results[masterIndex] = masterResult;
-  onSlotReady?.(masterIndex, masterResult);
-
-  // ── Step 2: Generate remaining slots in parallel, anchored to master ────────
   await Promise.all(
     dataUrls.map(async (img, i) => {
-      if (i === masterIndex || !img) {
-        // Emit null for slots with no base image so the UI can clear their spinners
-        if (!img) onSlotReady?.(i, null);
+      if (!img) {
+        onSlotReady?.(i, null);
         return;
       }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-
-        // If master failed, fall back to independent generation so we still produce something
-        const parts = masterResult
-          ? buildReferenceParts(prepared, masterResult)
-          : buildMasterParts(prepared);
-
-        const result = await callGemini(parts).catch(() => null);
+        const result   = await callGemini(buildParts(prepared)).catch(() => null);
         results[i] = result;
         onSlotReady?.(i, result);
       } catch {
