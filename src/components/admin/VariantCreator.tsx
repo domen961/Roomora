@@ -65,26 +65,43 @@ export default function VariantCreator({ product, merchantId }: Props) {
     if (mode === "texture" && !textureUrl) return;
     if (!targetPart.trim()) return;
 
-    // Reset preview
+    // Reset preview — mark all slots with a base image as "generating"
+    const hasBases = product.images.slice(0, 4).map((img) => !!img);
     setPreviewImages([null, null, null, null]);
     setHasGenerated(false);
-    setGenerating([true, true, true, true]);
+    setGenerating(hasBases as [boolean, boolean, boolean, boolean]);
+
+    // Track how many slots have settled so we know when all are done
+    let settledCount = 0;
+    const totalSlots = hasBases.filter(Boolean).length;
 
     try {
-      // Call generateVariant — returns array of 4 slots (null where no base image or failed)
-      const results = await generateVariant(
+      await generateVariant(
         product.images,
         product.category || "furniture",
         targetPart.trim(),
         modification,
+        // onSlotReady: update each slot as it resolves (progressive reveal)
+        (index, dataUrl) => {
+          setPreviewImages((prev) => {
+            const next = [...prev] as (string | null)[];
+            next[index] = dataUrl;
+            return next;
+          });
+          setGenerating((prev) => {
+            const next = [...prev] as boolean[];
+            next[index] = false;
+            return next;
+          });
+          settledCount++;
+          if (settledCount >= totalSlots) setHasGenerated(true);
+        },
       );
-
-      setPreviewImages(results);
-      setHasGenerated(true);
     } catch (err) {
       console.error("generateVariant failed:", err);
     } finally {
       setGenerating([false, false, false, false]);
+      setHasGenerated(true);
     }
   }, [mode, colorHex, colorDesc, textureUrl, targetPart, product]);
 

@@ -432,83 +432,133 @@ export async function generateProductAltView(
 
 /**
  * Generates a color or texture variant of a product.
- * Runs up to 4 parallel Gemini calls — one per base image slot.
- * Null is returned for slots where no base image exists or where generation fails.
+ *
+ * Strategy for color consistency:
+ *   1. Generate the MASTER variant from the first available base image using the
+ *      full modification prompt (hex / description / texture).
+ *   2. Generate all remaining slots in parallel, passing the master result as a
+ *      visual COLOR REFERENCE so Gemini matches the exact hue/material instead
+ *      of re-interpreting the text description independently each time.
+ *
+ * This adds one sequential step (~8 s extra) but eliminates per-image color drift.
  *
  * @param baseImages    - Supabase storage URLs or data URLs for the product (up to 4)
  * @param furnitureType - e.g. "sofa", "chair", "table"
  * @param targetPart    - natural-language part description, e.g. "the seat cushion"
  * @param modification  - { type: "color", value: "#hex or name" } | { type: "texture", dataUrl: string }
+ * @param onSlotReady   - optional callback fired as each slot resolves (for progressive UI updates)
  */
 export async function generateVariant(
-  baseImages:   string[],
+  baseImages:    string[],
   furnitureType: string,
   targetPart:    string,
   modification:
     | { type: "color";   value: string   }
     | { type: "texture"; dataUrl: string },
+  onSlotReady?: (index: number, dataUrl: string | null) => void,
 ): Promise<(string | null)[]> {
-  // Prepare base images (white bg + auto-crop)
+
+  // ── Prepare all base images up front ────────────────────────────────────────
   const dataUrls = await Promise.all(
     baseImages.slice(0, 4).map((img) => toDataUrl(img).catch(() => null)),
   );
 
-  const results = await Promise.all(
-    dataUrls.map(async (img, i): Promise<string | null> => {
-      if (!img) return null;
+  // Pre-load texture once (shared across all calls)
+  const texPrepared = modification.type === "texture"
+    ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
+    : null;
 
+  // ── Build the MASTER prompt (first call — no reference yet) ─────────────────
+  const buildMasterParts = (prepared: string): unknown[] => {
+    if (modification.type === "color") {
+      const colorDesc = modification.value.startsWith("#")
+        ? `the color ${modification.value}`
+        : modification.value;
+      const prompt =
+        `You receive a product photo of a ${furnitureType}. ` +
+        `Change the color and finish of ${targetPart} to ${colorDesc}. ` +
+        `Everything else — shape, proportions, other parts, materials, stitching, and all background — ` +
+        `must remain pixel-perfect identical. ` +
+        `White background. Same camera angle. Same lighting. ` +
+        `Output: the modified product photo only. No text.`;
+      return [
+        { text: prompt },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+      ];
+    } else {
+      const prompt =
+        `You receive a product photo of a ${furnitureType} and a texture reference image. ` +
+        `Apply the exact material and texture shown in the reference image to ${targetPart} of the furniture. ` +
+        `Maintain the original 3D shape, proportions, and form completely. ` +
+        `All other parts, background, and lighting must remain pixel-perfect identical. ` +
+        `White background. Same camera angle. Same lighting. ` +
+        `Output: the modified product photo only. No text.`;
+      return [
+        { text: prompt },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared!) } },
+      ];
+    }
+  };
+
+  // ── Build REFERENCE prompt (subsequent calls — use master result as anchor) ──
+  const buildReferenceParts = (prepared: string, masterResult: string): unknown[] => {
+    const prompt =
+      `You receive two photos:\n` +
+      `1. BASE IMAGE: A product photo of a ${furnitureType} to modify (different camera angle).\n` +
+      `2. COLOR REFERENCE: The same ${furnitureType} with ${targetPart} already changed to the target color/material.\n\n` +
+      `Your task: Apply the EXACT SAME color, material, and finish to ${targetPart} in the BASE IMAGE ` +
+      `as shown in the COLOR REFERENCE. ` +
+      `Match the hue, saturation, brightness, surface sheen, and texture grain precisely — ` +
+      `the COLOR REFERENCE is the ground truth. ` +
+      `Everything else (shape, proportions, other parts, background, lighting) must remain ` +
+      `pixel-perfect identical to the BASE IMAGE. ` +
+      `White background. Same camera angle as BASE IMAGE. ` +
+      `Output: the modified product photo only. No text.`;
+    return [
+      { text: prompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },         // BASE IMAGE
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },     // COLOR REFERENCE
+    ];
+  };
+
+  // ── Step 1: Generate MASTER from the first available slot ───────────────────
+  const masterIndex = dataUrls.findIndex((u) => u !== null);
+  if (masterIndex === -1) return [null, null, null, null];
+
+  const results: (string | null)[] = [null, null, null, null];
+
+  const masterBase    = await prepareProductImage(dataUrls[masterIndex]!, 1024, 1024, 0.92);
+  const masterResult  = await callGemini(buildMasterParts(masterBase)).catch(() => null);
+  results[masterIndex] = masterResult;
+  onSlotReady?.(masterIndex, masterResult);
+
+  // ── Step 2: Generate remaining slots in parallel, anchored to master ────────
+  await Promise.all(
+    dataUrls.map(async (img, i) => {
+      if (i === masterIndex || !img) {
+        // Emit null for slots with no base image so the UI can clear their spinners
+        if (!img) onSlotReady?.(i, null);
+        return;
+      }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
 
-        let parts: unknown[];
+        // If master failed, fall back to independent generation so we still produce something
+        const parts = masterResult
+          ? buildReferenceParts(prepared, masterResult)
+          : buildMasterParts(prepared);
 
-        if (modification.type === "color") {
-          const colorDesc = modification.value.startsWith("#")
-            ? `the color ${modification.value}`
-            : modification.value;
-
-          const prompt =
-            `You receive a product photo of a ${furnitureType}. ` +
-            `Change the color and finish of ${targetPart} to ${colorDesc}. ` +
-            `Everything else — shape, proportions, other parts, materials, stitching, and all background — ` +
-            `must remain pixel-perfect identical. ` +
-            `White background. Same camera angle. Same lighting. ` +
-            `Output: the modified product photo only. No text.`;
-
-          parts = [
-            { text: prompt },
-            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-          ];
-        } else {
-          // texture modification — send product + texture reference
-          const texPrepared = await toDataUrl(modification.dataUrl)
-            .then((d) => resizeImage(d, 512, 512, 0.85));
-
-          const prompt =
-            `You receive a product photo of a ${furnitureType} and a texture reference image. ` +
-            `Apply the exact material and texture shown in the reference image to ${targetPart} of the furniture. ` +
-            `Maintain the original 3D shape, proportions, and form of the furniture completely. ` +
-            `All other parts, background, and lighting must remain pixel-perfect identical. ` +
-            `White background. Same camera angle. Same lighting. ` +
-            `Output: the modified product photo only. No text.`;
-
-          parts = [
-            { text: prompt },
-            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared) } },
-          ];
-        }
-
-        return await callGemini(parts);
+        const result = await callGemini(parts).catch(() => null);
+        results[i] = result;
+        onSlotReady?.(i, result);
       } catch {
         console.warn(`generateVariant: slot ${i} failed — skipping`);
-        return null;
+        onSlotReady?.(i, null);
       }
     }),
   );
 
-  // Pad to 4 slots with nulls for any images not in baseImages
-  while (results.length < 4) results.push(null);
   return results;
 }
 
