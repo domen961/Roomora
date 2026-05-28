@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getProducts, getVariants, type ProductVariant } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
 import Logo from "@/components/Logo";
-import VariantRevolver from "@/components/VariantRevolver";
+import VariantPicker from "@/components/VariantPicker";
 import type { Product } from "@/lib/products";
 
 type Phase = "idle" | "generating" | "result" | "error";
@@ -376,7 +376,7 @@ export default function CapturePage() {
                 <Camera className="h-9 w-9 text-white" />
               </button>
               {variants.length > 0 ? (
-                <VariantRevolver
+                <VariantPicker
                   base={{ name: product?.name ?? "", imageUrl: product?.images[0] ?? null }}
                   variants={variants}
                   selectedIndex={variantIndex}
