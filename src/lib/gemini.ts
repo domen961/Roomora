@@ -573,34 +573,38 @@ export async function generateVariant(
     ];
   };
 
-  // ── Phase 1: generate MASTER from slot 0 (sequential) ──────────────────────
-  // Slot 0 becomes the single color reference for all other slots.
-  // Generating it first eliminates per-image color drift: rather than each slot
-  // independently re-interpreting "dark brown" (which produces subtly different
-  // shades), slots 1-3 copy their color directly from slot 0's pixels.
+  // ── Phase 1: generate slots 0 and 1 independently (parallel) ───────────────
+  // Slots 0 and 1 are different camera angles — using color-transfer between them
+  // causes Gemini to copy the wrong angle. Generate each from its own source image
+  // with the same swatch → angles stay correct, color is consistent enough.
   const results: (string | null)[] = [null, null, null, null];
 
-  const img0 = dataUrls[0];
-  if (img0) {
-    try {
-      const prepared = await prepareProductImage(img0, 1024, 1024, 0.92);
-      results[0] = await callGemini(buildGeminiParts(prepared)).catch(() => null);
-    } catch {
-      console.warn("generateVariant: slot 0 (master) failed");
-    }
-  }
-  onSlotReady?.(0, results[0]);
+  await Promise.all(
+    [0, 1].map(async (i) => {
+      const img = dataUrls[i];
+      if (!img) { onSlotReady?.(i, null); return; }
+      try {
+        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+        results[i] = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+        onSlotReady?.(i, results[i]);
+      } catch {
+        console.warn(`generateVariant: slot ${i} failed`);
+        onSlotReady?.(i, null);
+      }
+    }),
+  );
 
-  // ── Phase 2: color-transfer master onto slots 1, 2, 3 in parallel ───────────
-  // All three derive from the same master → guaranteed color consistency.
-  // Fallback to independent generation if master failed.
-  const masterResult = results[0];
+  // ── Phase 2: color-transfer master (slot 0) onto alt views (slots 2 and 3) ──
+  // Alt views are 75° overhead — applying modification text at that ambiguous angle
+  // causes phantom colors on non-modified parts. Color-transfer from slot 0 is safe
+  // here because both are overhead shots of the same object.
+  const masterResult  = results[0] ?? results[1];
   const masterResized = masterResult
     ? await resizeImage(masterResult, 1024, 1024, 0.92)
     : null;
 
   await Promise.all(
-    [1, 2, 3].map(async (i) => {
+    [2, 3].map(async (i) => {
       const img = dataUrls[i];
       if (!img) { onSlotReady?.(i, null); return; }
       try {
