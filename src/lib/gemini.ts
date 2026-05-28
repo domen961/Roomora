@@ -396,28 +396,56 @@ export async function generateProductAltView(
     dataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
   );
 
+  // 75° steep-diagonal view — camera is almost directly overhead, offset to one side.
+  // Critical: the TOP SURFACE dominates. For a chair this means the seat cushion
+  // fills most of the frame; the backrest appears as a thin foreshortened strip
+  // along the top edge; legs are short stubs barely visible at the corners.
+  // This is NOT a front view, NOT a 3/4 eye-level view. It is a bird's-eye view
+  // tilted just enough to show depth.
   const perspPrompt =
     `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-    `elevated at approximately 75° above horizontal — almost directly overhead, ` +
-    `from a slightly diagonal (3/4) angle. ` +
-    `The top surface (seat/cushion/tabletop) should dominate the frame; ` +
-    `legs or base visible only as short stubs at the corners spreading slightly outward. ` +
+    `Synthesise ONE new product photo of this EXACT same ${furnitureType} as seen by a camera ` +
+    `positioned almost directly overhead, tilted roughly 75° down from horizontal — like a drone ` +
+    `hovering high above and slightly to one diagonal side.\n\n` +
+    `WHAT MUST BE VISIBLE at this angle:\n` +
+    `- The TOP SURFACE of the furniture dominates and fills most of the frame. For a chair/sofa: ` +
+    `you see the full seat cushion from above. For a table: you see the full tabletop.\n` +
+    `- The BACKREST (if any) appears as a narrow, severely foreshortened strip along the top edge ` +
+    `of the frame — you are looking almost straight down onto it.\n` +
+    `- The LEGS are barely visible: short stubs spreading slightly outward and downward ` +
+    `from under the seat, seen almost straight-on from above.\n` +
+    `- Armrests (if any) are seen from ABOVE — you see their top surface, not their sides.\n\n` +
+    `WHAT MUST NOT APPEAR:\n` +
+    `- The front face of the furniture should NOT be prominent — you are looking down, not at it.\n` +
+    `- No eye-level perspective. No standard 3/4 product-photo angle.\n\n` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context.`;
+    `White background. Single object only, centred. No shadows, no room context. ` +
+    `Output: one photo only.`;
 
+  // 75° steep-front view — camera almost directly overhead but centred in front.
   const frontPrompt =
     `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-    `elevated at approximately 75° above horizontal, positioned directly in front of the furniture — ` +
-    `looking steeply down at the front face from above. ` +
-    `The front face is visible at the bottom of the frame, heavily foreshortened; ` +
-    `the top surface occupies most of the upper portion of the frame. ` +
-    `Legs visible only at the bottom corners as short stubs. ` +
+    `Synthesise ONE new product photo of this EXACT same ${furnitureType} as seen by a camera ` +
+    `positioned almost directly overhead, tilted roughly 75° down from horizontal, ` +
+    `centred directly above the front of the furniture — like a drone hovering straight above ` +
+    `and in front of it, looking steeply down.\n\n` +
+    `WHAT MUST BE VISIBLE at this angle:\n` +
+    `- The TOP SURFACE of the furniture fills most of the frame. For a chair/sofa: ` +
+    `the seat cushion dominates the upper half of the frame.\n` +
+    `- The FRONT FACE of the furniture appears as a narrow, severely foreshortened band ` +
+    `along the very bottom edge of the frame — heavily compressed because you are looking ` +
+    `nearly straight down onto it.\n` +
+    `- The LEGS at the front corners are short stubs visible at the bottom corners.\n` +
+    `- The BACKREST (if any) appears at the top of the frame: you see its top edge and ` +
+    `a sliver of the back face, heavily foreshortened.\n\n` +
+    `WHAT MUST NOT APPEAR:\n` +
+    `- The front face should NOT be the main visible surface — you are looking down, not at it.\n` +
+    `- No eye-level perspective. No standard 3/4 product-photo angle.\n\n` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context.`;
+    `White background. Single object only, centred. No shadows, no room context. ` +
+    `Output: one photo only.`;
 
   const prompt = variant === "front" ? frontPrompt : perspPrompt;
 
