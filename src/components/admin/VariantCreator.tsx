@@ -271,7 +271,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
     // Build the parts array from all rows
     const variantParts: VariantPart[] = partRows.map((r) => ({
-      targetPart:   r.targetPart.trim(),
+      targetPart:   r.targetPart.trim() || "the furniture",
       modification: r.mode === "color"
         ? { type: "color" as const, hexColor: r.colorHex, description: r.colorDesc.trim() || undefined }
         : { type: "texture" as const, dataUrl: r.textureUrl! },
@@ -406,7 +406,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const canApply       = !isApplying
                          && product.images.length > 0
                          && partRows.length > 0
-                         && partRows.every((r) => r.targetPart.trim().length > 0)
                          && partRows.every((r) => r.mode === "texture" ? !!r.textureUrl : true);
   const anyGenerated   = previewImages.some((img) => img !== null);
   const canSave        = hasGenerated && anyGenerated && variantName.trim().length > 0 && !saving;
@@ -514,7 +513,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
               {/* Part name */}
               <input
                 type="text"
-                placeholder="Which part: seat cushion, wooden legs, tabletop…"
+                placeholder="Which part (optional): seat cushion, wooden legs, tabletop…"
                 value={row.targetPart}
                 onChange={(e) => updateRow(row.id, { targetPart: e.target.value })}
                 className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
