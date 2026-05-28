@@ -567,18 +567,52 @@ export async function generateVariant(
     }),
   );
 
-  // ── Phase 2: apply the same color/texture modification to the pre-built alt views ──
+  // ── Phase 2: transfer the exact coloring from Phase 1 onto the pre-built alt views ──
   // Slots 2 and 3 are the already-correct 75° overhead shots stored on the product.
-  // Applying the modification directly to THEM preserves their exact camera angle.
-  // (The old approach of re-synthesising from Phase 1 outputs failed because Phase 1
-  //  results are frontal shots with no overhead geometry for Gemini to work from.)
+  // Rather than re-interpreting the modification text on an ambiguous overhead shot
+  // (which caused phantom colors on non-modified parts), we show Gemini the already-
+  // correct Phase 1 result as a COLOR MASTER and ask it to match that coloring on
+  // the alt view — a much easier "color transfer + angle preservation" task.
+  const colorMaster = results[0] ?? results[1];  // correctly-colored standard view
+
   await Promise.all(
     [2, 3].map(async (i) => {
       const img = dataUrls[i];
       if (!img) { onSlotReady?.(i, null); return; }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        const result   = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+
+        let result: string | null = null;
+
+        if (colorMaster) {
+          // Color-transfer prompt: show alt view + correctly-colored standard view.
+          // Gemini's job is purely "match these colors at this angle" — no ambiguity.
+          const masterResized = await resizeImage(colorMaster, 1024, 1024, 0.92);
+          const transferPrompt =
+            `You receive two product photos of the same ${furnitureType}:\n` +
+            `- Image 1: the furniture at a steep overhead angle (75° from above)\n` +
+            `- Image 2: the same furniture with a color/material modification correctly applied, at a standard angle\n\n` +
+            `Task: Reproduce the furniture exactly as shown in Image 1 (same steep overhead angle, same framing, same shape), ` +
+            `but with the EXACT SAME color and material changes visible in Image 2 applied.\n\n` +
+            `RULES:\n` +
+            `- Match the colors/materials from Image 2 precisely — copy them exactly, part by part.\n` +
+            `- Do NOT change any part that was not changed in Image 2; those parts must remain their original color.\n` +
+            `- Keep the steep overhead camera angle from Image 1 — do not change the viewpoint.\n` +
+            `- White background. Same lighting. No text.\n` +
+            `Output: one photo only.`;
+
+          result = await callGemini([
+            { text: transferPrompt },
+            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResized) } },
+          ]).catch(() => null);
+        }
+
+        // Fallback: direct modification if no color master available
+        if (!result) {
+          result = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+        }
+
         results[i] = result;
         onSlotReady?.(i, result);
       } catch {
