@@ -356,9 +356,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
     setColorDesc(chip.name);
     setColorHex(chip.hexColor);
     setHexAutoResolved(true);
-    setScannedChips([]);
-    setScanUrl("");
-    setScanError("");
   };
 
   // ── Inline rename ─────────────────────────────────────────────────────────
@@ -437,8 +434,11 @@ export default function VariantCreator({ product, merchantId }: Props) {
               <button
                 key={i}
                 onClick={() => applyChip(chip)}
-                className="flex items-center gap-1.5 rounded-full border border-border bg-card
-                           px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary transition-colors"
+                className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
+                  chip.hexColor === colorHex && chip.name === colorDesc
+                    ? "border-primary bg-primary/10 text-foreground"
+                    : "border-border bg-card text-foreground hover:bg-secondary"
+                }`}
               >
                 <span
                   className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
