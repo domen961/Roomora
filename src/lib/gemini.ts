@@ -173,41 +173,64 @@ async function prepareProductImage(src: string, maxW: number, maxH: number, qual
 }
 
 async function callGemini(parts: unknown[]): Promise<string> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 90_000); // 90 s hard limit
+  const MAX_RETRIES = 4;
+  // Exponential back-off delays for 429: 5 s, 10 s, 20 s, 40 s
+  const BACKOFF_MS = [5_000, 10_000, 20_000, 40_000];
 
   const body = {
     contents: [{ role: "user", parts }],
     generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
   };
 
-  try {
-    const res = await fetch(getEndpoint(), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 90_000); // 90 s per attempt
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`Gemini API ${res.status}: ${text}`);
+    try {
+      const res = await fetch(getEndpoint(), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+
+      // Rate-limited — wait and retry
+      if (res.status === 429) {
+        if (attempt >= MAX_RETRIES) {
+          throw new Error(
+            "Gemini rate limit (429) — too many requests. Wait a minute and try again.",
+          );
+        }
+        const delay = BACKOFF_MS[attempt] ?? 40_000;
+        console.warn(`callGemini: 429 rate limit, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
+        clearTimeout(timer);
+        await new Promise((r) => setTimeout(r, delay));
+        continue; // next iteration of the loop
+      }
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Gemini API ${res.status}: ${text}`);
+      }
+
+      const data = await res.json();
+      const responseParts: unknown[] = data?.candidates?.[0]?.content?.parts ?? [];
+      const imgPart = responseParts.find((p: any) => typeof p?.inlineData?.data === "string") as any;
+      if (!imgPart) throw new Error("No image returned by Gemini");
+
+      return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
+    } catch (err) {
+      if ((err as Error).name === "AbortError") {
+        throw new Error("Generation timed out after 90 s — please try again");
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
     }
-
-    const data = await res.json();
-    const responseParts: unknown[] = data?.candidates?.[0]?.content?.parts ?? [];
-    const imgPart = responseParts.find((p: any) => typeof p?.inlineData?.data === "string") as any;
-    if (!imgPart) throw new Error("No image returned by Gemini");
-
-    return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-  } catch (err) {
-    if ((err as Error).name === "AbortError") {
-      throw new Error("Generation timed out after 90 s — please try again");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
   }
+
+  // Should never reach here — TypeScript requires an explicit throw
+  throw new Error("Gemini: max retries exceeded");
 }
 
 export interface ProductDimensions {
@@ -578,69 +601,68 @@ export async function generateVariant(
     ];
   };
 
-  // ── Phase 1: generate slots 0 and 1 independently (parallel) ───────────────
-  // Slots 0 and 1 are different camera angles — using color-transfer between them
-  // causes Gemini to copy the wrong angle. Generate each from its own source image
-  // with the same swatch → angles stay correct, color is consistent enough.
+  // ── Generate all slots sequentially (one at a time) ────────────────────────
+  // Running slots in parallel fires multiple Gemini image requests simultaneously
+  // and reliably hits the per-minute rate limit (429). Sequential execution avoids
+  // this with zero extra latency on the *first* slot (user sees progressive fills).
+  //
+  // Order: 0 → 1 → 2 → 3
+  // Slots 0 and 1: direct modification with the colour swatch as visual anchor.
+  // Slots 2 and 3: colour-transfer from slot 0 result (avoids phantom colours on
+  //               the ambiguous 75° overhead angle).
   const results: (string | null)[] = [null, null, null, null];
 
-  await Promise.all(
-    [0, 1].map(async (i) => {
-      const img = dataUrls[i];
-      if (!img) { onSlotReady?.(i, null); return; }
-      try {
-        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        results[i] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
-          console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
-          return null;
-        });
-        onSlotReady?.(i, results[i]);
-      } catch (err) {
-        console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
-        onSlotReady?.(i, null);
-      }
-    }),
-  );
+  // ── Slots 0 and 1: direct modification ───────────────────────────────────
+  for (const i of [0, 1]) {
+    const img = dataUrls[i];
+    if (!img) { onSlotReady?.(i, null); continue; }
+    try {
+      const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+      results[i] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+        console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
+        return null;
+      });
+      onSlotReady?.(i, results[i]);
+    } catch (err) {
+      console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
+      onSlotReady?.(i, null);
+    }
+  }
 
-  // ── Phase 2: color-transfer master (slot 0) onto alt views (slots 2 and 3) ──
-  // Alt views are 75° overhead — applying modification text at that ambiguous angle
-  // causes phantom colors on non-modified parts. Color-transfer from slot 0 is safe
-  // here because both are overhead shots of the same object.
+  // ── Slots 2 and 3: colour-transfer from the master (slot 0 or 1) ─────────
   const masterResult  = results[0] ?? results[1];
   const masterResized = masterResult
     ? await resizeImage(masterResult, 1024, 1024, 0.92)
     : null;
 
-  await Promise.all(
-    [2, 3].map(async (i) => {
-      const img = dataUrls[i];
-      if (!img) { onSlotReady?.(i, null); return; }
-      try {
-        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        let result: string | null = null;
+  for (const i of [2, 3]) {
+    const img = dataUrls[i];
+    if (!img) { onSlotReady?.(i, null); continue; }
+    try {
+      const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+      let result: string | null = null;
 
-        if (masterResized) {
-          result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch((err) => {
-            console.error(`generateVariant: color-transfer slot ${i} failed:`, err instanceof Error ? err.message : err);
-            return null;
-          });
-        }
-        // Fallback: direct modification if master unavailable
-        if (!result) {
-          result = await callGemini(buildGeminiParts(prepared)).catch((err) => {
-            console.error(`generateVariant: direct fallback slot ${i} failed:`, err instanceof Error ? err.message : err);
-            return null;
-          });
-        }
-
-        results[i] = result;
-        onSlotReady?.(i, result);
-      } catch (err) {
-        console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
-        onSlotReady?.(i, null);
+      if (masterResized) {
+        result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch((err) => {
+          console.error(`generateVariant: color-transfer slot ${i} failed:`, err instanceof Error ? err.message : err);
+          return null;
+        });
       }
-    }),
-  );
+      // Fallback: direct modification if master unavailable
+      if (!result) {
+        result = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+          console.error(`generateVariant: direct fallback slot ${i} failed:`, err instanceof Error ? err.message : err);
+          return null;
+        });
+      }
+
+      results[i] = result;
+      onSlotReady?.(i, result);
+    } catch (err) {
+      console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
+      onSlotReady?.(i, null);
+    }
+  }
 
   return results;
 }
