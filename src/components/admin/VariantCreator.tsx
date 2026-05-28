@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Trash2, ImageIcon } from "lucide-react";
+import { Check, Loader2, Pencil, Trash2, ImageIcon, X } from "lucide-react";
 import { generateVariant } from "@/lib/gemini";
-import { getVariants, saveVariant, deleteVariant, type ProductVariant } from "@/lib/db";
+import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant } from "@/lib/db";
 import type { Product } from "@/lib/products";
 
 interface Props {
@@ -198,6 +198,16 @@ export default function VariantCreator({ product, merchantId }: Props) {
   // ── Lightbox ─────────────────────────────────────────────────────────────
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // ── URL scan ──────────────────────────────────────────────────────────────
+  const [scanUrl,      setScanUrl]      = useState("");
+  const [scanning,     setScanning]     = useState(false);
+  const [scannedChips, setScannedChips] = useState<{ name: string; hexColor: string }[]>([]);
+  const [scanError,    setScanError]    = useState("");
+
+  // ── Inline rename ─────────────────────────────────────────────────────────
+  const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
+  const [editingName,      setEditingName]      = useState("");
+
   const textureInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load saved variants on mount ─────────────────────────────────────────
@@ -319,6 +329,64 @@ export default function VariantCreator({ product, merchantId }: Props) {
     }
   };
 
+  // ── Scan product page for variants ───────────────────────────────────────
+  const handleScan = async () => {
+    if (!scanUrl.trim()) return;
+    setScanning(true);
+    setScannedChips([]);
+    setScanError("");
+    try {
+      const res  = await fetch("/api/extract-variants", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ url: scanUrl.trim() }),
+      });
+      const data = await res.json();
+      const chips = data.variants ?? [];
+      setScannedChips(chips);
+      if (chips.length === 0) setScanError("No color variants found on that page.");
+    } catch {
+      setScanError("Failed to scan page. Check the URL and try again.");
+    } finally {
+      setScanning(false);
+    }
+  };
+
+  const applyChip = (chip: { name: string; hexColor: string }) => {
+    setColorDesc(chip.name);
+    setColorHex(chip.hexColor);
+    setHexAutoResolved(true);
+    setScannedChips([]);
+    setScanUrl("");
+    setScanError("");
+  };
+
+  // ── Inline rename ─────────────────────────────────────────────────────────
+  const startEdit = (v: ProductVariant) => {
+    setEditingVariantId(v.id);
+    setEditingName(v.name);
+  };
+
+  const cancelEdit = () => {
+    setEditingVariantId(null);
+    setEditingName("");
+  };
+
+  const commitEdit = async (v: ProductVariant) => {
+    const trimmed = editingName.trim();
+    if (!trimmed || trimmed === v.name) { cancelEdit(); return; }
+    try {
+      await renameVariant(merchantId, product.id, v.id, trimmed);
+      setSavedVariants((prev) =>
+        prev.map((x) => x.id === v.id ? { ...x, name: trimmed } : x),
+      );
+    } catch (err) {
+      console.error("renameVariant failed:", err);
+    } finally {
+      cancelEdit();
+    }
+  };
+
   const isApplying     = generating.some(Boolean);
   const canApply       = !isApplying && targetPart.trim().length > 0 && product.images.length > 0
                          && (mode === "color" || !!textureUrl);
@@ -334,6 +402,57 @@ export default function VariantCreator({ product, merchantId }: Props) {
         <p className="text-xs text-muted-foreground">
           Generate color or material variations of this product.
         </p>
+      </div>
+
+      {/* ── Import from URL ── */}
+      <div className="flex flex-col gap-2">
+        <label className="text-xs text-muted-foreground uppercase tracking-widest">
+          Import colors from product page
+        </label>
+        <div className="flex gap-2">
+          <input
+            type="url"
+            placeholder="https://yourstore.com/product-page"
+            value={scanUrl}
+            onChange={(e) => { setScanUrl(e.target.value); setScanError(""); setScannedChips([]); }}
+            onKeyDown={(e) => { if (e.key === "Enter") handleScan(); }}
+            className="flex-1 rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
+                       placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <button
+            onClick={handleScan}
+            disabled={scanning || !scanUrl.trim()}
+            className="rounded border border-border bg-card px-3 py-1.5 text-xs text-foreground
+                       hover:bg-secondary transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                       flex items-center gap-1.5 flex-shrink-0"
+          >
+            {scanning ? <><Loader2 className="h-3 w-3 animate-spin" />Scanning…</> : "Scan"}
+          </button>
+        </div>
+
+        {/* Chips */}
+        {scannedChips.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-0.5">
+            {scannedChips.map((chip, i) => (
+              <button
+                key={i}
+                onClick={() => applyChip(chip)}
+                className="flex items-center gap-1.5 rounded-full border border-border bg-card
+                           px-2.5 py-1 text-[11px] text-foreground hover:bg-secondary transition-colors"
+              >
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/10"
+                  style={{ backgroundColor: chip.hexColor }}
+                />
+                {chip.name}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {scanError && (
+          <p className="text-[11px] text-amber-500/80">{scanError}</p>
+        )}
       </div>
 
       {/* ── Mode toggle ── */}
@@ -548,12 +667,13 @@ export default function VariantCreator({ product, merchantId }: Props) {
             {savedVariants.map((v) => (
               <div key={v.id}
                 className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
+
+                {/* Thumbnail */}
                 {v.images[0] ? (
                   <img
                     src={v.images[0]}
                     alt={v.name}
-                    className="w-10 h-10 object-contain rounded border border-border flex-shrink-0
-                               cursor-zoom-in"
+                    className="w-10 h-10 object-contain rounded border border-border flex-shrink-0 cursor-zoom-in"
                     onClick={() => setPreviewUrl(v.images[0])}
                   />
                 ) : (
@@ -561,17 +681,50 @@ export default function VariantCreator({ product, merchantId }: Props) {
                     <ImageIcon className="h-4 w-4 text-muted-foreground/50" />
                   </div>
                 )}
-                <span className="flex-1 text-xs text-foreground truncate">{v.name}</span>
-                <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">
-                  {v.images.length} image{v.images.length !== 1 ? "s" : ""}
-                </span>
-                <button
-                  onClick={() => handleDelete(v.id)}
-                  className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                  aria-label="Delete variant"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+
+                {/* Name — normal or inline edit */}
+                {editingVariantId === v.id ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={editingName}
+                      onChange={(e) => setEditingName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter")  commitEdit(v);
+                        if (e.key === "Escape") cancelEdit();
+                      }}
+                      className="flex-1 rounded border border-input bg-background px-2 py-0.5 text-xs
+                                 text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                    />
+                    <button onClick={() => commitEdit(v)}
+                      className="text-primary hover:text-primary/80 transition-colors flex-shrink-0"
+                      aria-label="Save name">
+                      <Check className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={cancelEdit}
+                      className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                      aria-label="Cancel">
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-xs text-foreground truncate">{v.name}</span>
+                    <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">
+                      {v.images.length} image{v.images.length !== 1 ? "s" : ""}
+                    </span>
+                    <button onClick={() => startEdit(v)}
+                      className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
+                      aria-label="Rename variant">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => handleDelete(v.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
+                      aria-label="Delete variant">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </>
+                )}
               </div>
             ))}
           </div>

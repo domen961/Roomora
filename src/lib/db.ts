@@ -310,6 +310,22 @@ export async function deleteVariant(
   if (error) throw new Error(error.message);
 }
 
+/** Rename a saved variant */
+export async function renameVariant(
+  merchantId: string,
+  productId:  string,
+  variantId:  string,
+  name:       string,
+): Promise<void> {
+  const { error } = await supabase
+    .from("product_variants")
+    .update({ name })
+    .eq("id",          variantId)
+    .eq("product_id",  productId)
+    .eq("merchant_id", merchantId);
+  if (error) throw new Error(error.message);
+}
+
 /** Fetch all merchants — superadmin only (RLS enforced) */
 export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null }[]> {
   const { data, error } = await supabase
