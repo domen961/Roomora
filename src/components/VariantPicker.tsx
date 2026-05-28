@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronUp, X, ImageIcon } from "lucide-react";
+import { X, ImageIcon } from "lucide-react";
 import type { ProductVariant } from "@/lib/db";
 
 interface Item {
@@ -25,7 +25,6 @@ export default function VariantPicker({ base, variants, selectedIndex, onSelect 
   ];
 
   const current = items[selectedIndex] ?? items[0];
-  const truncate = (s: string, max: number) => s.length > max ? s.slice(0, max - 1) + "…" : s;
 
   // ── Sheet open / close animation ─────────────────────────────────────────
   const openSheet = () => {
@@ -48,35 +47,24 @@ export default function VariantPicker({ base, variants, selectedIndex, onSelect 
 
   return (
     <>
-      {/* ── Collapsed pill ────────────────────────────────────────────────── */}
+      {/* ── Round trigger button ──────────────────────────────────────────── */}
       <button
         onClick={openSheet}
-        className="flex items-center gap-2 bg-white rounded-full pl-1.5 pr-3 py-1.5
-                   shadow-lg active:scale-95 transition-transform h-12 max-w-[120px]"
+        className="w-14 h-14 rounded-full bg-white border-2 border-white/80 shadow-lg
+                   flex items-center justify-center overflow-hidden
+                   active:scale-95 transition-transform flex-shrink-0"
         aria-label="Choose variant"
       >
-        {/* Thumbnail */}
-        <div className="w-9 h-9 rounded-full overflow-hidden bg-white border border-gray-100
-                        flex-shrink-0 flex items-center justify-center">
-          {current.imageUrl ? (
-            <img
-              src={current.imageUrl}
-              alt={current.name}
-              className="w-full h-full object-contain p-0.5"
-              draggable={false}
-            />
-          ) : (
-            <div className="w-full h-full rounded-full bg-gray-100" />
-          )}
-        </div>
-
-        {/* Name */}
-        <span className="text-[11px] font-semibold text-gray-800 truncate leading-tight flex-1 text-left">
-          {truncate(current.name, 10)}
-        </span>
-
-        {/* Chevron */}
-        <ChevronUp className="h-3 w-3 text-gray-400 flex-shrink-0" />
+        {current.imageUrl ? (
+          <img
+            src={current.imageUrl}
+            alt={current.name}
+            className="w-full h-full object-contain p-1.5"
+            draggable={false}
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-gray-100" />
+        )}
       </button>
 
       {/* ── Bottom sheet ──────────────────────────────────────────────────── */}
