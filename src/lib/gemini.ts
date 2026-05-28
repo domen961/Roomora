@@ -194,8 +194,26 @@ async function callGemini(parts: unknown[]): Promise<string> {
         signal: controller.signal,
       });
 
-      // Rate-limited — wait and retry
+      // Rate-limited — check whether it's daily quota or per-minute spike
       if (res.status === 429) {
+        const errText = await res.text();
+        console.warn("callGemini 429 body:", errText.slice(0, 300));
+
+        // Daily/project quota exhausted — retrying won't help until reset
+        const isQuotaExhausted =
+          errText.includes("per_day") ||
+          errText.includes("daily") ||
+          errText.includes("RESOURCE_EXHAUSTED");
+
+        if (isQuotaExhausted && attempt === 0) {
+          // First hit on a quota-exhausted error → fail fast with a clear message
+          throw new Error(
+            "Gemini quota exhausted — your free daily limit has been reached. " +
+            "Check https://aistudio.google.com for quota status or use a paid API key. " +
+            "Quota resets at midnight Pacific time.",
+          );
+        }
+
         if (attempt >= MAX_RETRIES) {
           throw new Error(
             "Gemini rate limit (429) — too many requests. Wait a minute and try again.",
