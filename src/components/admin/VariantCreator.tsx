@@ -226,6 +226,9 @@ export default function VariantCreator({ product, merchantId }: Props) {
   // ── Lightbox ─────────────────────────────────────────────────────────────
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
+  // ── Apply error ───────────────────────────────────────────────────────────
+  const [applyError, setApplyError] = useState<string | null>(null);
+
   // ── URL scan ──────────────────────────────────────────────────────────────
   const [scanUrl,      setScanUrl]      = useState("");
   const [scanning,     setScanning]     = useState(false);
@@ -269,6 +272,13 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const handleApply = useCallback(async () => {
     if (product.images.length === 0) return;
 
+    // Guard: Gemini key must be present (baked into bundle at build time)
+    if (!import.meta.env.VITE_GEMINI_API_KEY) {
+      setApplyError("Configuration error: VITE_GEMINI_API_KEY is not set in this deployment.");
+      return;
+    }
+    setApplyError(null);
+
     // Build the parts array from all rows
     const variantParts: VariantPart[] = partRows.map((r) => ({
       targetPart:   r.targetPart.trim() || "the furniture",
@@ -285,6 +295,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
     // Track how many slots have settled so we know when all are done
     let settledCount = 0;
+    let successCount = 0;
     const totalSlots = hasBases.filter(Boolean).length;
 
     try {
@@ -294,6 +305,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
         variantParts,
         // onSlotReady: update each slot as it resolves (progressive reveal)
         (index, dataUrl) => {
+          if (dataUrl !== null) successCount++;
           setPreviewImages((prev) => {
             const next = [...prev] as (string | null)[];
             next[index] = dataUrl;
@@ -310,9 +322,16 @@ export default function VariantCreator({ product, merchantId }: Props) {
       );
     } catch (err) {
       console.error("generateVariant failed:", err);
+      setApplyError(`Generation error: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setGenerating([false, false, false, false]);
       setHasGenerated(true);
+      if (successCount === 0 && totalSlots > 0) {
+        setApplyError(
+          "Generation failed — no images were produced. " +
+          "Check that the product images load correctly and open the browser console (F12) for the specific error.",
+        );
+      }
     }
   }, [partRows, product]);
 
@@ -615,6 +634,12 @@ export default function VariantCreator({ product, merchantId }: Props) {
               <>Apply</>
             )}
           </button>
+
+          {applyError && (
+            <p className="text-[11px] text-red-400/90 bg-red-400/10 rounded px-2 py-1.5 leading-tight">
+              ⚠ {applyError}
+            </p>
+          )}
         </div>
 
         {/* ── Right: 2×2 preview ── */}

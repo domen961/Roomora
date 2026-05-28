@@ -483,7 +483,12 @@ export async function generateVariant(
 
   // ── Prepare all base images up front ────────────────────────────────────────
   const dataUrls = await Promise.all(
-    baseImages.slice(0, 4).map((img) => toDataUrl(img).catch(() => null)),
+    baseImages.slice(0, 4).map((img, i) =>
+      toDataUrl(img).catch((err) => {
+        console.error(`generateVariant: toDataUrl slot ${i} failed:`, err instanceof Error ? err.message : err, "\nURL:", img?.slice(0, 120));
+        return null;
+      }),
+    ),
   );
 
   // Pre-load all textures in parallel (one per texture part, keyed by index)
@@ -585,10 +590,13 @@ export async function generateVariant(
       if (!img) { onSlotReady?.(i, null); return; }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        results[i] = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+        results[i] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+          console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
+          return null;
+        });
         onSlotReady?.(i, results[i]);
-      } catch {
-        console.warn(`generateVariant: slot ${i} failed`);
+      } catch (err) {
+        console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
         onSlotReady?.(i, null);
       }
     }),
@@ -612,17 +620,23 @@ export async function generateVariant(
         let result: string | null = null;
 
         if (masterResized) {
-          result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch(() => null);
+          result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch((err) => {
+            console.error(`generateVariant: color-transfer slot ${i} failed:`, err instanceof Error ? err.message : err);
+            return null;
+          });
         }
         // Fallback: direct modification if master unavailable
         if (!result) {
-          result = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+          result = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+            console.error(`generateVariant: direct fallback slot ${i} failed:`, err instanceof Error ? err.message : err);
+            return null;
+          });
         }
 
         results[i] = result;
         onSlotReady?.(i, result);
-      } catch {
-        console.warn(`generateVariant: slot ${i} failed`);
+      } catch (err) {
+        console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
         onSlotReady?.(i, null);
       }
     }),
