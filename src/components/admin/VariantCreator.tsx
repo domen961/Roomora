@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pencil, Trash2, ImageIcon, X } from "lucide-react";
-import { generateVariant } from "@/lib/gemini";
+import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X } from "lucide-react";
+import { generateVariant, type VariantPart } from "@/lib/gemini";
 import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant } from "@/lib/db";
 import type { Product } from "@/lib/products";
 
@@ -9,7 +9,30 @@ interface Props {
   merchantId: string;
 }
 
-type Mode = "color" | "texture";
+// ── Per-part row data ────────────────────────────────────────────────────────
+type PartMode = "color" | "texture";
+
+interface PartRow {
+  id:             string;
+  targetPart:     string;
+  mode:           PartMode;
+  colorHex:       string;
+  colorDesc:      string;
+  hexAutoResolved:boolean;
+  textureUrl:     string | null;
+}
+
+function makePartRow(): PartRow {
+  return {
+    id:              crypto.randomUUID(),
+    targetPart:      "",
+    mode:            "color",
+    colorHex:        "#8B6F47",
+    colorDesc:       "",
+    hexAutoResolved: false,
+    textureUrl:      null,
+  };
+}
 
 // ── Material / color name → hex lookup ──────────────────────────────────────
 // When the merchant types a description, we resolve it to a hex so a solid
@@ -176,14 +199,19 @@ function resolveColorDescription(desc: string): string | null {
 }
 
 export default function VariantCreator({ product, merchantId }: Props) {
-  // ── Controls ─────────────────────────────────────────────────────────────
-  const [mode,             setMode]             = useState<Mode>("color");
-  const [colorHex,         setColorHex]         = useState("#8B6F47");
-  const [colorDesc,        setColorDesc]        = useState("");
-  const [hexAutoResolved,  setHexAutoResolved]  = useState(false);
-  const [textureUrl,       setTextureUrl]       = useState<string | null>(null);
-  const [targetPart,       setTargetPart]       = useState("");
-  const [variantName,      setVariantName]      = useState("");
+  // ── Part rows ─────────────────────────────────────────────────────────────
+  const [partRows,     setPartRows]     = useState<PartRow[]>([makePartRow()]);
+  const [variantName,  setVariantName]  = useState("");
+
+  const textureRefs = useRef<Record<string, HTMLInputElement | null>>({});
+
+  const updateRow = (id: string, patch: Partial<PartRow>) =>
+    setPartRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
+
+  const addRow = () => setPartRows((prev) => [...prev, makePartRow()]);
+
+  const removeRow = (id: string) =>
+    setPartRows((prev) => prev.length > 1 ? prev.filter((r) => r.id !== id) : prev);
 
   // ── Preview (4 slots) ────────────────────────────────────────────────────
   const [previewImages, setPreviewImages] = useState<(string | null)[]>([null, null, null, null]);
@@ -208,8 +236,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const [editingVariantId, setEditingVariantId] = useState<string | null>(null);
   const [editingName,      setEditingName]      = useState("");
 
-  const textureInputRef = useRef<HTMLInputElement>(null);
-
   // ── Load saved variants on mount ─────────────────────────────────────────
   useEffect(() => {
     getVariants(merchantId, product.id)
@@ -218,45 +244,38 @@ export default function VariantCreator({ product, merchantId }: Props) {
       .finally(() => setVariantsLoaded(true));
   }, [merchantId, product.id]);
 
-  // ── Auto-resolve color description → hex ────────────────────────────────────
-  // Debounced: 400 ms after the user stops typing, look up the description in
-  // MATERIAL_COLORS and update the color picker if a match is found. This ensures
-  // a solid swatch is always sent to Gemini (visual anchor beats text-only prompts).
-  useEffect(() => {
-    if (!colorDesc.trim()) { setHexAutoResolved(false); return; }
-    const timer = setTimeout(() => {
-      const resolved = resolveColorDescription(colorDesc);
-      if (resolved) {
-        setColorHex(resolved);
-        setHexAutoResolved(true);
-      } else {
-        setHexAutoResolved(false);
-      }
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [colorDesc]);
-
-  // ── Handle texture file pick ──────────────────────────────────────────────
-  const handleTextureFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // ── Handle texture file pick for a specific row ───────────────────────────
+  const handleTextureFile = (id: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
     const reader = new FileReader();
-    reader.onload = () => setTextureUrl(reader.result as string);
+    reader.onload = () => updateRow(id, { textureUrl: reader.result as string });
     reader.readAsDataURL(file);
+  };
+
+  // ── Per-row color description auto-resolve (synchronous lookup) ───────────
+  const handleColorDescChange = (id: string, desc: string) => {
+    const resolved = resolveColorDescription(desc);
+    updateRow(id, {
+      colorDesc:       desc,
+      ...(resolved
+        ? { colorHex: resolved, hexAutoResolved: true }
+        : { hexAutoResolved: false }),
+    });
   };
 
   // ── Apply variant generation ──────────────────────────────────────────────
   const handleApply = useCallback(async () => {
     if (product.images.length === 0) return;
 
-    const modification =
-      mode === "color"
-        ? { type: "color" as const, hexColor: colorHex, description: colorDesc.trim() || undefined }
-        : { type: "texture" as const, dataUrl: textureUrl! };
-
-    if (mode === "texture" && !textureUrl) return;
-    if (!targetPart.trim()) return;
+    // Build the parts array from all rows
+    const variantParts: VariantPart[] = partRows.map((r) => ({
+      targetPart:   r.targetPart.trim(),
+      modification: r.mode === "color"
+        ? { type: "color" as const, hexColor: r.colorHex, description: r.colorDesc.trim() || undefined }
+        : { type: "texture" as const, dataUrl: r.textureUrl! },
+    }));
 
     // Reset preview — mark all slots with a base image as "generating"
     const hasBases = product.images.slice(0, 4).map((img) => !!img);
@@ -272,8 +291,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
       await generateVariant(
         product.images,
         product.category || "furniture",
-        targetPart.trim(),
-        modification,
+        variantParts,
         // onSlotReady: update each slot as it resolves (progressive reveal)
         (index, dataUrl) => {
           setPreviewImages((prev) => {
@@ -296,7 +314,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
       setGenerating([false, false, false, false]);
       setHasGenerated(true);
     }
-  }, [mode, colorHex, colorDesc, textureUrl, targetPart, product]);
+  }, [partRows, product]);
 
   // ── Save variant ──────────────────────────────────────────────────────────
   const handleSave = async () => {
@@ -353,9 +371,9 @@ export default function VariantCreator({ product, merchantId }: Props) {
   };
 
   const applyChip = (chip: { name: string; hexColor: string }) => {
-    setColorDesc(chip.name);
-    setColorHex(chip.hexColor);
-    setHexAutoResolved(true);
+    // Apply to the first part row (most common case — single-part selection)
+    const firstId = partRows[0]?.id;
+    if (firstId) updateRow(firstId, { colorDesc: chip.name, colorHex: chip.hexColor, hexAutoResolved: true });
   };
 
   // ── Inline rename ─────────────────────────────────────────────────────────
@@ -385,8 +403,11 @@ export default function VariantCreator({ product, merchantId }: Props) {
   };
 
   const isApplying     = generating.some(Boolean);
-  const canApply       = !isApplying && targetPart.trim().length > 0 && product.images.length > 0
-                         && (mode === "color" || !!textureUrl);
+  const canApply       = !isApplying
+                         && product.images.length > 0
+                         && partRows.length > 0
+                         && partRows.every((r) => r.targetPart.trim().length > 0)
+                         && partRows.every((r) => r.mode === "texture" ? !!r.textureUrl : true);
   const anyGenerated   = previewImages.some((img) => img !== null);
   const canSave        = hasGenerated && anyGenerated && variantName.trim().length > 0 && !saving;
 
@@ -435,7 +456,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
                 key={i}
                 onClick={() => applyChip(chip)}
                 className={`flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] transition-colors ${
-                  chip.hexColor === colorHex && chip.name === colorDesc
+                  chip.hexColor === partRows[0]?.colorHex && chip.name === partRows[0]?.colorDesc
                     ? "border-primary bg-primary/10 text-foreground"
                     : "border-border bg-card text-foreground hover:bg-secondary"
                 }`}
@@ -455,104 +476,126 @@ export default function VariantCreator({ product, merchantId }: Props) {
         )}
       </div>
 
-      {/* ── Mode toggle ── */}
-      <div className="flex rounded-lg border border-border overflow-hidden w-fit text-xs">
-        {(["color", "texture"] as Mode[]).map((m) => (
-          <button
-            key={m}
-            onClick={() => setMode(m)}
-            className={`px-4 py-1.5 capitalize transition-colors ${
-              mode === m
-                ? "bg-primary text-primary-foreground"
-                : "bg-card text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {m}
-          </button>
-        ))}
-      </div>
-
       <div className="flex flex-col gap-4 sm:flex-row sm:gap-8">
-        {/* ── Left: controls ── */}
+        {/* ── Left: part rows + controls ── */}
         <div className="flex flex-col gap-3 flex-1 min-w-0">
 
-          {mode === "color" ? (
-            <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground uppercase tracking-widest">Color</label>
+          {/* Part rows */}
+          {partRows.map((row, idx) => (
+            <div key={row.id} className="flex flex-col gap-2 rounded-lg border border-border bg-card/50 p-3">
+
+              {/* Row header */}
               <div className="flex items-center gap-2">
-                <input
-                  type="color"
-                  value={colorHex}
-                  onChange={(e) => { setColorHex(e.target.value); setHexAutoResolved(false); }}
-                  className="w-10 h-8 rounded border border-border cursor-pointer bg-transparent p-0.5"
-                  title="Pick a color"
-                />
-                <span className="text-xs text-muted-foreground font-mono">{colorHex}</span>
-                {hexAutoResolved && (
-                  <span className="text-[10px] text-primary/80 font-medium">✓ matched</span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-widest flex-1">
+                  Part {partRows.length > 1 ? idx + 1 : ""}
+                </span>
+                {/* Mode mini-toggle */}
+                <div className="flex rounded border border-border overflow-hidden text-[10px]">
+                  {(["color", "texture"] as PartMode[]).map((m) => (
+                    <button key={m} onClick={() => updateRow(row.id, { mode: m })}
+                      className={`px-2.5 py-1 capitalize transition-colors ${
+                        row.mode === m
+                          ? "bg-primary text-primary-foreground"
+                          : "bg-card text-muted-foreground hover:text-foreground"
+                      }`}>
+                      {m}
+                    </button>
+                  ))}
+                </div>
+                {partRows.length > 1 && (
+                  <button onClick={() => removeRow(row.id)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    aria-label="Remove part">
+                    <X className="h-3.5 w-3.5" />
+                  </button>
                 )}
               </div>
+
+              {/* Part name */}
               <input
                 type="text"
-                placeholder="Describe: dark walnut, sage green, warm beige…"
-                value={colorDesc}
-                onChange={(e) => setColorDesc(e.target.value)}
+                placeholder="Which part: seat cushion, wooden legs, tabletop…"
+                value={row.targetPart}
+                onChange={(e) => updateRow(row.id, { targetPart: e.target.value })}
                 className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
                            placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               />
-            </div>
-          ) : (
-            <div className="flex flex-col gap-2">
-              <label className="text-xs text-muted-foreground uppercase tracking-widest">Texture reference</label>
-              {textureUrl ? (
-                <div className="relative w-20 h-20 rounded border border-border overflow-hidden group cursor-pointer"
-                  onClick={() => setPreviewUrl(textureUrl)}>
-                  <img src={textureUrl} alt="Texture" className="w-full h-full object-cover" />
-                  <button
-                    onClick={(e) => { e.stopPropagation(); setTextureUrl(null); }}
-                    className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center
-                               transition-opacity text-white text-xs"
-                  >
-                    Remove
-                  </button>
+
+              {/* Color or texture controls */}
+              {row.mode === "color" ? (
+                <div className="flex flex-col gap-1.5">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={row.colorHex}
+                      onChange={(e) => updateRow(row.id, { colorHex: e.target.value, hexAutoResolved: false })}
+                      className="w-8 h-7 rounded border border-border cursor-pointer bg-transparent p-0.5 flex-shrink-0"
+                    />
+                    <span className="text-xs text-muted-foreground font-mono">{row.colorHex}</span>
+                    {row.hexAutoResolved && (
+                      <span className="text-[10px] text-primary/80 font-medium">✓ matched</span>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    placeholder="Describe: dark walnut, sage green, warm beige…"
+                    value={row.colorDesc}
+                    onChange={(e) => handleColorDescChange(row.id, e.target.value)}
+                    className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
+                               placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+                  />
                 </div>
               ) : (
-                <button
-                  onClick={() => textureInputRef.current?.click()}
-                  className="w-20 h-20 rounded border-2 border-dashed border-border hover:border-primary/50
-                             flex flex-col items-center justify-center gap-1 transition-colors text-muted-foreground
-                             hover:text-foreground"
-                >
-                  <ImageIcon className="h-5 w-5" />
-                  <span className="text-xs">Upload</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  {row.textureUrl ? (
+                    <div className="relative w-16 h-16 rounded border border-border overflow-hidden group cursor-pointer flex-shrink-0"
+                      onClick={() => setPreviewUrl(row.textureUrl!)}>
+                      <img src={row.textureUrl} alt="Texture" className="w-full h-full object-cover" />
+                      <button
+                        onClick={(e) => { e.stopPropagation(); updateRow(row.id, { textureUrl: null }); }}
+                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center
+                                   justify-center transition-opacity text-white text-[10px]">
+                        Remove
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => textureRefs.current[row.id]?.click()}
+                      className="w-16 h-16 rounded border-2 border-dashed border-border hover:border-primary/50
+                                 flex flex-col items-center justify-center gap-1 transition-colors
+                                 text-muted-foreground hover:text-foreground flex-shrink-0">
+                      <ImageIcon className="h-4 w-4" />
+                      <span className="text-[10px]">Upload</span>
+                    </button>
+                  )}
+                  <input
+                    ref={(el) => { textureRefs.current[row.id] = el; }}
+                    type="file" accept="image/*" className="hidden"
+                    onChange={(e) => handleTextureFile(row.id, e)}
+                  />
+                </div>
               )}
-              <input ref={textureInputRef} type="file" accept="image/*"
-                className="hidden" onChange={handleTextureFile} />
             </div>
-          )}
+          ))}
 
-          <div className="flex flex-col gap-1">
-            <label className="text-xs text-muted-foreground uppercase tracking-widest">
-              Which part to change
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. the seat cushion, the tabletop, the legs"
-              value={targetPart}
-              onChange={(e) => setTargetPart(e.target.value)}
-              className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground
-                         placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-          </div>
+          {/* Add part button */}
+          <button
+            onClick={addRow}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground
+                       transition-colors w-fit"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add another part
+          </button>
 
+          {/* Variant name */}
           <div className="flex flex-col gap-1">
             <label className="text-xs text-muted-foreground uppercase tracking-widest">
               Variant name
             </label>
             <input
               type="text"
-              placeholder="e.g. Sand, Dark Oak, Bouclé White…"
+              placeholder="e.g. Cognac + Dark Walnut, Sand Bouclé…"
               value={variantName}
               onChange={(e) => setVariantName(e.target.value)}
               className="w-full rounded border border-input bg-card px-3 py-1.5 text-xs text-foreground

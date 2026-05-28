@@ -463,18 +463,22 @@ function createColorSwatch(hexColor: string): string {
  *
  * @param baseImages    - Supabase storage URLs or data URLs for the product (up to 4)
  * @param furnitureType - e.g. "sofa", "chair", "table"
- * @param targetPart    - natural-language part description, e.g. "the seat cushion"
- * @param modification  - { type: "color", hexColor: "#RRGGBB", description?: "natural language" } | { type: "texture", dataUrl: string }
+ * @param parts         - one or more { targetPart, modification } descriptors applied simultaneously
  * @param onSlotReady   - optional callback fired as each slot resolves (for progressive UI updates)
  */
+
+export type VariantPart = {
+  targetPart:   string;
+  modification:
+    | { type: "color"; hexColor: string; description?: string }
+    | { type: "texture"; dataUrl: string };
+};
+
 export async function generateVariant(
   baseImages:    string[],
   furnitureType: string,
-  targetPart:    string,
-  modification:
-    | { type: "color"; hexColor: string; description?: string }
-    | { type: "texture"; dataUrl: string },
-  onSlotReady?: (index: number, dataUrl: string | null) => void,
+  parts:         VariantPart[],
+  onSlotReady?:  (index: number, dataUrl: string | null) => void,
 ): Promise<(string | null)[]> {
 
   // ── Prepare all base images up front ────────────────────────────────────────
@@ -482,57 +486,63 @@ export async function generateVariant(
     baseImages.slice(0, 4).map((img) => toDataUrl(img).catch(() => null)),
   );
 
-  // Pre-load texture once (shared across all calls)
-  const texPrepared = modification.type === "texture"
-    ? await toDataUrl(modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85))
-    : null;
+  // Pre-load all textures in parallel (one per texture part, keyed by index)
+  const textures = await Promise.all(
+    parts.map((p) =>
+      p.modification.type === "texture"
+        ? toDataUrl(p.modification.dataUrl).then((d) => resizeImage(d, 512, 512, 0.85)).catch(() => null)
+        : Promise.resolve(null),
+    ),
+  );
 
-  // Swatch is always generated from hexColor — gives Gemini an absolute visual
-  // anchor so every slot interprets the color identically.
-  const colorSwatch = modification.type === "color"
-    ? createColorSwatch(modification.hexColor)
-    : null;
+  // Pre-build solid swatches for all color parts
+  const swatches = parts.map((p) =>
+    p.modification.type === "color" ? createColorSwatch(p.modification.hexColor) : null,
+  );
 
-  // Label for the prompt: prefer natural language description, fall back to hex.
-  const colorLabel = modification.type === "color"
-    ? (modification.description?.trim() || `the color ${modification.hexColor}`)
-    : "";
+  // ── Build Gemini parts array for a single product photo ─────────────────────
+  const buildGeminiParts = (prepared: string): unknown[] => {
+    // Count how many reference images we'll attach (swatch or texture per part)
+    const refImages: string[] = [];
+    parts.forEach((_, i) => {
+      const img = swatches[i] ?? textures[i];
+      if (img) refImages.push(img);
+    });
 
-  // ── Build parts for a real product photo (slots 0 and 1) ───────────────────
-  const buildParts = (prepared: string): unknown[] => {
-    if (modification.type === "color") {
-      const prompt =
-        `You receive a product photo of a ${furnitureType} and a COLOR SWATCH.\n` +
-        `Change the color and finish of ${targetPart} to ${colorLabel}.\n` +
-        `The second image is a COLOR SWATCH — a solid square showing the exact target color. ` +
-        `Use it as the absolute reference for hue and saturation. ` +
-        `RULES:\n` +
-        `- Only change ${targetPart} — every other part of the furniture stays identical.\n` +
-        `- Preserve the original lighting, shadows, and highlights — do not alter the light direction.\n` +
-        `- Shape, proportions, stitching, and background must remain pixel-perfect identical.\n` +
-        `- White background. Same camera angle. Same lighting direction.\n` +
-        `Output: the modified product photo only. No text.`;
-      return [
-        { text: prompt },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(colorSwatch!) } },
-      ];
-    } else {
-      const prompt =
-        `You receive a product photo of a ${furnitureType} and a TEXTURE REFERENCE image.\n` +
-        `Apply the exact material and texture shown in the TEXTURE REFERENCE to ${targetPart} of the furniture.\n` +
-        `RULES:\n` +
-        `- Only change ${targetPart} — every other part stays identical.\n` +
-        `- Preserve the original lighting, shadows, and highlights.\n` +
-        `- Maintain the original 3D shape and proportions completely.\n` +
-        `- White background. Same camera angle. Same lighting direction.\n` +
-        `Output: the modified product photo only. No text.`;
-      return [
-        { text: prompt },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-        { inlineData: { mimeType: "image/jpeg", data: stripPrefix(texPrepared!) } },
-      ];
-    }
+    // Build numbered change instructions that reference image slots
+    let imgSlot = 2; // slot 1 = product photo; slot 2+ = reference images
+    const changeLines = parts.map((p, i) => {
+      const ref   = swatches[i] ?? textures[i];
+      const label = swatches[i]
+        ? `image ${imgSlot} is a COLOR SWATCH showing the exact target hue — use it as the absolute color reference`
+        : `image ${imgSlot} is a TEXTURE REFERENCE — apply that material to this part`;
+      const desc  = p.modification.type === "color"
+        ? (p.modification.description?.trim() || `the color ${p.modification.hexColor}`)
+        : "the texture shown in the reference image";
+      if (ref) imgSlot++;
+      return `${i + 1}. Change ${p.targetPart} to ${desc}. ${label}.`;
+    });
+
+    const many = parts.length > 1;
+    const prompt =
+      `You receive a product photo of a ${furnitureType}` +
+      (refImages.length ? ` and ${refImages.length} reference image${refImages.length > 1 ? "s" : ""}` : "") + `.\n` +
+      (many
+        ? `Apply ALL of the following changes simultaneously:\n${changeLines.join("\n")}\n`
+        : `${changeLines[0]}\n`) +
+      `RULES:\n` +
+      (many ? `- Apply ALL changes at once — do not skip any part.\n` : "") +
+      `- Only change the specified part${many ? "s" : ""} — every other area of the furniture stays identical.\n` +
+      `- Preserve the original lighting, shadows, and highlights — do not alter the light direction.\n` +
+      `- Shape, proportions, stitching, and background must remain pixel-perfect identical.\n` +
+      `- White background. Same camera angle. Same lighting direction.\n` +
+      `Output: the modified product photo only. No text.`;
+
+    return [
+      { text: prompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+      ...refImages.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+    ];
   };
 
   // ── Phase 1: apply modification to real product photos (slots 0 and 1) ─────
@@ -547,7 +557,7 @@ export async function generateVariant(
       if (!img) { onSlotReady?.(i, null); return; }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        const result   = await callGemini(buildParts(prepared)).catch(() => null);
+        const result   = await callGemini(buildGeminiParts(prepared)).catch(() => null);
         results[i] = result;
         onSlotReady?.(i, result);
       } catch {
