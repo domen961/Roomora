@@ -545,70 +545,72 @@ export async function generateVariant(
     ];
   };
 
-  // ── Phase 1: apply modification to real product photos (slots 0 and 1) ─────
-  // Slots 2 and 3 are AI-generated synthetic views — applying color to them
-  // independently causes inconsistency because their studio lighting differs.
-  // Instead, derive them from the already-colored slot 0/1 results (Phase 2).
+  // ── Color-transfer helper ────────────────────────────────────────────────────
+  // Used for slots 1, 2, 3 once the master (slot 0) is ready.
+  // Image 1 = target view (original, unmodified, at its own angle)
+  // Image 2 = master (slot 0 result — the single source of truth for color)
+  // Gemini's task: copy the exact coloring from Image 2 onto Image 1's angle.
+  // This is far more reliable than re-interpreting "dark brown" text independently
+  // for each angle — Gemini just matches pixels, not descriptions.
+  const buildColorTransferParts = (prepared: string, master: string): unknown[] => {
+    const prompt =
+      `You receive two product photos of the same ${furnitureType}:\n` +
+      `- Image 1: the original furniture at a specific camera angle\n` +
+      `- Image 2: the same furniture with a color/material modification correctly applied\n\n` +
+      `Task: Reproduce the furniture exactly as shown in Image 1 (IDENTICAL camera angle, framing, shape, proportions, and lighting), ` +
+      `but apply the EXACT SAME color and material changes that are visible in Image 2.\n\n` +
+      `RULES:\n` +
+      `- Match the colors and materials from Image 2 part by part — copy them precisely.\n` +
+      `- Parts that were NOT changed in Image 2 must stay their original color from Image 1.\n` +
+      `- The camera angle in your output must match Image 1 exactly — do not change the viewpoint.\n` +
+      `- Preserve the lighting, shadows, and material texture from Image 1.\n` +
+      `- White background. No text.\n` +
+      `Output: one photo only.`;
+    return [
+      { text: prompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(master) } },
+    ];
+  };
+
+  // ── Phase 1: generate MASTER from slot 0 (sequential) ──────────────────────
+  // Slot 0 becomes the single color reference for all other slots.
+  // Generating it first eliminates per-image color drift: rather than each slot
+  // independently re-interpreting "dark brown" (which produces subtly different
+  // shades), slots 1-3 copy their color directly from slot 0's pixels.
   const results: (string | null)[] = [null, null, null, null];
 
+  const img0 = dataUrls[0];
+  if (img0) {
+    try {
+      const prepared = await prepareProductImage(img0, 1024, 1024, 0.92);
+      results[0] = await callGemini(buildGeminiParts(prepared)).catch(() => null);
+    } catch {
+      console.warn("generateVariant: slot 0 (master) failed");
+    }
+  }
+  onSlotReady?.(0, results[0]);
+
+  // ── Phase 2: color-transfer master onto slots 1, 2, 3 in parallel ───────────
+  // All three derive from the same master → guaranteed color consistency.
+  // Fallback to independent generation if master failed.
+  const masterResult = results[0];
+  const masterResized = masterResult
+    ? await resizeImage(masterResult, 1024, 1024, 0.92)
+    : null;
+
   await Promise.all(
-    [0, 1].map(async (i) => {
+    [1, 2, 3].map(async (i) => {
       const img = dataUrls[i];
       if (!img) { onSlotReady?.(i, null); return; }
       try {
         const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        const result   = await callGemini(buildGeminiParts(prepared)).catch(() => null);
-        results[i] = result;
-        onSlotReady?.(i, result);
-      } catch {
-        console.warn(`generateVariant: slot ${i} failed`);
-        onSlotReady?.(i, null);
-      }
-    }),
-  );
-
-  // ── Phase 2: transfer the exact coloring from Phase 1 onto the pre-built alt views ──
-  // Slots 2 and 3 are the already-correct 75° overhead shots stored on the product.
-  // Rather than re-interpreting the modification text on an ambiguous overhead shot
-  // (which caused phantom colors on non-modified parts), we show Gemini the already-
-  // correct Phase 1 result as a COLOR MASTER and ask it to match that coloring on
-  // the alt view — a much easier "color transfer + angle preservation" task.
-  const colorMaster = results[0] ?? results[1];  // correctly-colored standard view
-
-  await Promise.all(
-    [2, 3].map(async (i) => {
-      const img = dataUrls[i];
-      if (!img) { onSlotReady?.(i, null); return; }
-      try {
-        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-
         let result: string | null = null;
 
-        if (colorMaster) {
-          // Color-transfer prompt: show alt view + correctly-colored standard view.
-          // Gemini's job is purely "match these colors at this angle" — no ambiguity.
-          const masterResized = await resizeImage(colorMaster, 1024, 1024, 0.92);
-          const transferPrompt =
-            `You receive two product photos of the same ${furnitureType}:\n` +
-            `- Image 1: the furniture at a steep overhead angle (75° from above)\n` +
-            `- Image 2: the same furniture with a color/material modification correctly applied, at a standard angle\n\n` +
-            `Task: Reproduce the furniture exactly as shown in Image 1 (same steep overhead angle, same framing, same shape), ` +
-            `but with the EXACT SAME color and material changes visible in Image 2 applied.\n\n` +
-            `RULES:\n` +
-            `- Match the colors/materials from Image 2 precisely — copy them exactly, part by part.\n` +
-            `- Do NOT change any part that was not changed in Image 2; those parts must remain their original color.\n` +
-            `- Keep the steep overhead camera angle from Image 1 — do not change the viewpoint.\n` +
-            `- White background. Same lighting. No text.\n` +
-            `Output: one photo only.`;
-
-          result = await callGemini([
-            { text: transferPrompt },
-            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-            { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResized) } },
-          ]).catch(() => null);
+        if (masterResized) {
+          result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch(() => null);
         }
-
-        // Fallback: direct modification if no color master available
+        // Fallback: direct modification if master unavailable
         if (!result) {
           result = await callGemini(buildGeminiParts(prepared)).catch(() => null);
         }
