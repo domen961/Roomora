@@ -88,7 +88,7 @@ export default function VariantRevolver({ base, variants, selectedIndex, onSelec
     >
       {/* Circular icon */}
       <div
-        className={`w-14 h-14 rounded-full border-2 border-white/60 bg-white/10 backdrop-blur-sm
+        className={`w-14 h-14 rounded-full border-2 border-white/60 bg-white/15 backdrop-blur-md
                     flex items-center justify-center overflow-hidden shadow-lg transition-transform
                     ${spinning ? "rotate-[30deg]" : "rotate-0"}`}
         style={{ transition: "transform 0.28s cubic-bezier(0.34,1.56,0.64,1)" }}
@@ -97,7 +97,7 @@ export default function VariantRevolver({ base, variants, selectedIndex, onSelec
           <img
             src={current.imageUrl}
             alt={current.name}
-            className="w-full h-full object-cover"
+            className="w-full h-full object-contain p-1.5 mix-blend-multiply"
             draggable={false}
           />
         ) : (
