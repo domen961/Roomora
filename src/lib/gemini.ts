@@ -396,56 +396,28 @@ export async function generateProductAltView(
     dataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
   );
 
-  // 75° steep-diagonal view — camera is almost directly overhead, offset to one side.
-  // Critical: the TOP SURFACE dominates. For a chair this means the seat cushion
-  // fills most of the frame; the backrest appears as a thin foreshortened strip
-  // along the top edge; legs are short stubs barely visible at the corners.
-  // This is NOT a front view, NOT a 3/4 eye-level view. It is a bird's-eye view
-  // tilted just enough to show depth.
   const perspPrompt =
     `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new product photo of this EXACT same ${furnitureType} as seen by a camera ` +
-    `positioned almost directly overhead, tilted roughly 75° down from horizontal — like a drone ` +
-    `hovering high above and slightly to one diagonal side.\n\n` +
-    `WHAT MUST BE VISIBLE at this angle:\n` +
-    `- The TOP SURFACE of the furniture dominates and fills most of the frame. For a chair/sofa: ` +
-    `you see the full seat cushion from above. For a table: you see the full tabletop.\n` +
-    `- The BACKREST (if any) appears as a narrow, severely foreshortened strip along the top edge ` +
-    `of the frame — you are looking almost straight down onto it.\n` +
-    `- The LEGS are barely visible: short stubs spreading slightly outward and downward ` +
-    `from under the seat, seen almost straight-on from above.\n` +
-    `- Armrests (if any) are seen from ABOVE — you see their top surface, not their sides.\n\n` +
-    `WHAT MUST NOT APPEAR:\n` +
-    `- The front face of the furniture should NOT be prominent — you are looking down, not at it.\n` +
-    `- No eye-level perspective. No standard 3/4 product-photo angle.\n\n` +
+    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
+    `elevated at approximately 75° above horizontal — almost directly overhead, ` +
+    `from a slightly diagonal (3/4) angle. ` +
+    `The top surface (seat/cushion/tabletop) should dominate the frame; ` +
+    `legs or base visible only as short stubs at the corners spreading slightly outward. ` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context. ` +
-    `Output: one photo only.`;
+    `White background. Single object only, centred. No shadows, no room context.`;
 
-  // 75° steep-front view — camera almost directly overhead but centred in front.
   const frontPrompt =
     `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new product photo of this EXACT same ${furnitureType} as seen by a camera ` +
-    `positioned almost directly overhead, tilted roughly 75° down from horizontal, ` +
-    `centred directly above the front of the furniture — like a drone hovering straight above ` +
-    `and in front of it, looking steeply down.\n\n` +
-    `WHAT MUST BE VISIBLE at this angle:\n` +
-    `- The TOP SURFACE of the furniture fills most of the frame. For a chair/sofa: ` +
-    `the seat cushion dominates the upper half of the frame.\n` +
-    `- The FRONT FACE of the furniture appears as a narrow, severely foreshortened band ` +
-    `along the very bottom edge of the frame — heavily compressed because you are looking ` +
-    `nearly straight down onto it.\n` +
-    `- The LEGS at the front corners are short stubs visible at the bottom corners.\n` +
-    `- The BACKREST (if any) appears at the top of the frame: you see its top edge and ` +
-    `a sliver of the back face, heavily foreshortened.\n\n` +
-    `WHAT MUST NOT APPEAR:\n` +
-    `- The front face should NOT be the main visible surface — you are looking down, not at it.\n` +
-    `- No eye-level perspective. No standard 3/4 product-photo angle.\n\n` +
+    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
+    `elevated at approximately 75° above horizontal, positioned directly in front of the furniture — ` +
+    `looking steeply down at the front face from above. ` +
+    `The front face is visible at the bottom of the frame, heavily foreshortened; ` +
+    `the top surface occupies most of the upper portion of the frame. ` +
+    `Legs visible only at the bottom corners as short stubs. ` +
     `Keep the model, materials, colours, stitching details, and proportions ` +
     `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context. ` +
-    `Output: one photo only.`;
+    `White background. Single object only, centred. No shadows, no room context.`;
 
   const prompt = variant === "front" ? frontPrompt : perspPrompt;
 
@@ -595,22 +567,22 @@ export async function generateVariant(
     }),
   );
 
-  // ── Phase 2: synthesise steep-angle alt views from already-colored results ──
-  // By generating the 75° views FROM the colored slot 0/1 images, they inherit
-  // the exact same color — no independent generation, no lighting drift.
-  const coloredBase = [results[0], results[1]].filter((u): u is string => u !== null);
-
+  // ── Phase 2: apply the same color/texture modification to the pre-built alt views ──
+  // Slots 2 and 3 are the already-correct 75° overhead shots stored on the product.
+  // Applying the modification directly to THEM preserves their exact camera angle.
+  // (The old approach of re-synthesising from Phase 1 outputs failed because Phase 1
+  //  results are frontal shots with no overhead geometry for Gemini to work from.)
   await Promise.all(
     [2, 3].map(async (i) => {
-      // Only generate if the original product had an image in this slot
-      if (!dataUrls[i] || coloredBase.length === 0) { onSlotReady?.(i, null); return; }
+      const img = dataUrls[i];
+      if (!img) { onSlotReady?.(i, null); return; }
       try {
-        const variant = i === 2 ? "perspective" : "front";
-        const result  = await generateProductAltView(coloredBase, furnitureType, variant).catch(() => null);
+        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
+        const result   = await callGemini(buildGeminiParts(prepared)).catch(() => null);
         results[i] = result;
         onSlotReady?.(i, result);
       } catch {
-        console.warn(`generateVariant: alt-view slot ${i} failed`);
+        console.warn(`generateVariant: slot ${i} failed`);
         onSlotReady?.(i, null);
       }
     }),
