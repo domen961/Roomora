@@ -586,7 +586,7 @@ export async function generateVariant(
       `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
       `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
       `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
-      `- Apply the new color as a SOLID, OPAQUE finish that completely replaces the original color. No wood grain, no previous color bleeding through, no ghosting of the original tone. The recolored part must look as if it was manufactured in the new color from scratch.\n` +
+      `- The new color must fully replace the original hue — no ghosting or bleed-through of the old color. Apply it like a painted or lacquered finish: the hue is completely new, but the underlying wood grain texture, surface relief, and highlight/shadow shading from the original material are preserved and visible through the new color.\n` +
       `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, proportions, and camera angle.\n` +
       `- White background. No room context.\n` +
       `Output: ONE product photo with all customer color selections applied. No text.`;
