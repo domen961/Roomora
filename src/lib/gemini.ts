@@ -548,41 +548,48 @@ export async function generateVariant(
 
   // ── Build Gemini parts array for a single product photo ─────────────────────
   const buildGeminiParts = (prepared: string): unknown[] => {
-    // Count how many reference images we'll attach (swatch or texture per part)
     const refImages: string[] = [];
     parts.forEach((_, i) => {
       const img = swatches[i] ?? textures[i];
       if (img) refImages.push(img);
     });
 
-    // Build numbered change instructions that reference image slots
-    let imgSlot = 2; // slot 1 = product photo; slot 2+ = reference images
+    // Build one bullet line per part, with explicit swatch references
+    let imgSlot = 2; // image 1 = product photo; image 2+ = swatches/textures
     const changeLines = parts.map((p, i) => {
-      const ref   = swatches[i] ?? textures[i];
-      const label = swatches[i]
-        ? `image ${imgSlot} is a COLOR SWATCH showing the exact target hue — use it as the absolute color reference`
-        : `image ${imgSlot} is a TEXTURE REFERENCE — apply that material to this part`;
-      const desc  = p.modification.type === "color"
-        ? (p.modification.description?.trim() || `the color ${p.modification.hexColor}`)
-        : "the texture shown in the reference image";
+      const ref  = swatches[i] ?? textures[i];
+      const desc = p.modification.type === "color"
+        ? (p.modification.description?.trim()
+            ? `${p.modification.description.trim()} — exact hex ${p.modification.hexColor}`
+            : `color ${p.modification.hexColor}`)
+        : "texture from the reference image";
+      const swatchNote = ref
+        ? ` (image ${imgSlot} = ${swatches[i] ? "exact solid-color swatch — match this color precisely" : "texture sample — apply this material"})`
+        : "";
       if (ref) imgSlot++;
-      return `${i + 1}. Change ${p.targetPart} to ${desc}. ${label}.`;
+      // Wrap the part name and keep the line punchy
+      return `• ${p.targetPart}: recolor to ${desc}${swatchNote}`;
     });
 
     const many = parts.length > 1;
     const prompt =
-      `You receive a product photo of a ${furnitureType}` +
-      (refImages.length ? ` and ${refImages.length} reference image${refImages.length > 1 ? "s" : ""}` : "") + `.\n` +
-      (many
-        ? `Apply ALL of the following changes simultaneously:\n${changeLines.join("\n")}\n`
-        : `${changeLines[0]}\n`) +
-      `RULES:\n` +
-      (many ? `- Apply ALL changes at once — do not skip any part.\n` : "") +
-      `- Only change the specified part${many ? "s" : ""} — every other area of the furniture stays identical.\n` +
-      `- Preserve the original lighting, shadows, and highlights — do not alter the light direction.\n` +
-      `- Shape, proportions, stitching, and background must remain pixel-perfect identical.\n` +
-      `- White background. Same camera angle. Same lighting direction.\n` +
-      `Output: the modified product photo only. No text.`;
+      // Frame it so Gemini understands this is a legitimate furniture customisation job
+      `You are generating a product photo variant for a furniture retailer. ` +
+      `A customer has chosen specific colors/textures for parts of this ${furnitureType}. ` +
+      `Your task: apply the customer's selections exactly as specified.\n\n` +
+      `Image 1 — ${furnitureType} product photo to modify.\n` +
+      (refImages.length
+        ? `Images 2–${1 + refImages.length} — color swatches or texture samples for the changes below.\n`
+        : "") +
+      `\nCustomer color selections (apply ALL of these — none are optional):\n` +
+      `${changeLines.join("\n")}\n\n` +
+      `Requirements:\n` +
+      `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
+      `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
+      `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
+      `- Keep the original lighting, shadows, material texture (smooth/fabric/wood grain), proportions, and camera angle.\n` +
+      `- White background. No room context.\n` +
+      `Output: ONE product photo with all customer color selections applied. No text.`;
 
     return [
       { text: prompt },
@@ -600,18 +607,17 @@ export async function generateVariant(
   // for each angle — Gemini just matches pixels, not descriptions.
   const buildColorTransferParts = (prepared: string, master: string): unknown[] => {
     const prompt =
-      `You receive two product photos of the same ${furnitureType}:\n` +
-      `- Image 1: the original furniture at a specific camera angle\n` +
-      `- Image 2: the same furniture with a color/material modification correctly applied\n\n` +
-      `Task: Reproduce the furniture exactly as shown in Image 1 (IDENTICAL camera angle, framing, shape, proportions, and lighting), ` +
-      `but apply the EXACT SAME color and material changes that are visible in Image 2.\n\n` +
-      `RULES:\n` +
-      `- Match the colors and materials from Image 2 part by part — copy them precisely.\n` +
-      `- Parts that were NOT changed in Image 2 must stay their original color from Image 1.\n` +
-      `- The camera angle in your output must match Image 1 exactly — do not change the viewpoint.\n` +
-      `- Preserve the lighting, shadows, and material texture from Image 1.\n` +
-      `- White background. No text.\n` +
-      `Output: one photo only.`;
+      `You are generating a product photo variant for a furniture retailer.\n\n` +
+      `Image 1 — ANGLE TEMPLATE: the original ${furnitureType} at a specific camera angle (unmodified).\n` +
+      `Image 2 — COLOR TEMPLATE: the same ${furnitureType} with customer color selections applied.\n\n` +
+      `Task: Reproduce the ${furnitureType} using Image 1 as the angle/pose reference and Image 2 as the color reference.\n` +
+      `- Camera angle, framing, and proportions: copy from Image 1 exactly.\n` +
+      `- Colors and materials: copy from Image 2 exactly — identify every changed part and apply the same color.\n` +
+      `- Parts that are unchanged in Image 2 stay their original color from Image 1.\n\n` +
+      `CRITICAL: Your output viewpoint must match Image 1, not Image 2. ` +
+      `Treat Image 1 as the structural template and Image 2 as the paint/color guide only.\n\n` +
+      `Keep: lighting direction, shadow shape, material texture, white background.\n` +
+      `Output: one product photo only. No text.`;
     return [
       { text: prompt },
       { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
