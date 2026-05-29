@@ -586,7 +586,7 @@ export async function generateVariant(
       `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
       `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
       `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
-      `- Keep the original lighting, shadows, material texture (smooth/fabric/wood grain), proportions, and camera angle.\n` +
+      `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, material texture (smooth/fabric/wood grain), proportions, and camera angle.\n` +
       `- White background. No room context.\n` +
       `Output: ONE product photo with all customer color selections applied. No text.`;
 
