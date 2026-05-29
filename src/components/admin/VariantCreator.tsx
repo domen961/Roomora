@@ -621,24 +621,24 @@ export default function VariantCreator({ product, merchantId }: Props) {
             />
           </div>
 
-          <button
-            onClick={handleApply}
-            disabled={!canApply}
-            className="rounded-lg border border-primary bg-primary/10 hover:bg-primary/20
-                       px-4 py-2 text-xs font-medium text-foreground transition-colors
-                       disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {isApplying ? (
-              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Generating…</>
-            ) : (
-              <>Apply</>
-            )}
-          </button>
-
-          {applyError && (
-            <p className="text-[11px] text-red-400/90 bg-red-400/10 rounded px-2 py-1.5 leading-tight">
-              ⚠ {applyError}
-            </p>
+          {/* Save button */}
+          {hasGenerated && anyGenerated && (
+            <button
+              onClick={handleSave}
+              disabled={!canSave}
+              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground
+                         hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed
+                         flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</>
+              ) : (
+                <>Save as variant</>
+              )}
+            </button>
+          )}
+          {hasGenerated && anyGenerated && !variantName.trim() && (
+            <p className="text-[11px] text-amber-500/80">Enter a variant name above to save.</p>
           )}
         </div>
 
@@ -697,24 +697,25 @@ export default function VariantCreator({ product, merchantId }: Props) {
             })}
           </div>
 
-          {/* Save button */}
-          {hasGenerated && anyGenerated && (
-            <button
-              onClick={handleSave}
-              disabled={!canSave}
-              className="rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground
-                         hover:bg-primary/90 transition-colors disabled:opacity-40 disabled:cursor-not-allowed
-                         flex items-center justify-center gap-2"
-            >
-              {saving ? (
-                <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</>
-              ) : (
-                <>Save as variant</>
-              )}
-            </button>
-          )}
-          {hasGenerated && anyGenerated && !variantName.trim() && (
-            <p className="text-[11px] text-amber-500/80">Enter a variant name above to save.</p>
+          {/* Apply button */}
+          <button
+            onClick={handleApply}
+            disabled={!canApply}
+            className="rounded-lg border border-primary bg-primary/10 hover:bg-primary/20
+                       px-4 py-2 text-xs font-medium text-foreground transition-colors
+                       disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          >
+            {isApplying ? (
+              <><Loader2 className="h-3.5 w-3.5 animate-spin" />Generating…</>
+            ) : (
+              <>Apply</>
+            )}
+          </button>
+
+          {applyError && (
+            <p className="text-[11px] text-red-400/90 bg-red-400/10 rounded px-2 py-1.5 leading-tight">
+              ⚠ {applyError}
+            </p>
           )}
         </div>
       </div>
