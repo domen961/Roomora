@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X, Wand2 } from "lucide-react";
 import { generateVariant, type VariantPart } from "@/lib/gemini";
 import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant } from "@/lib/db";
 import type { Product } from "@/lib/products";
@@ -223,6 +223,12 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const [savedVariants,  setSavedVariants]  = useState<ProductVariant[]>([]);
   const [variantsLoaded, setVariantsLoaded] = useState(false);
 
+  // ── Loaded variant (editing mode) ────────────────────────────────────────
+  // When a saved variant is loaded for editing, we store its ID here so that
+  // clicking "Save" overwrites the original rather than creating a duplicate.
+  const [loadedVariantId,   setLoadedVariantId]   = useState<string | null>(null);
+  const [loadedVariantName, setLoadedVariantName] = useState<string>("");
+
   // ── Lightbox ─────────────────────────────────────────────────────────────
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
@@ -335,12 +341,41 @@ export default function VariantCreator({ product, merchantId }: Props) {
     }
   }, [partRows, product]);
 
+  // ── Load a saved variant back into the editor ─────────────────────────────
+  const loadVariantForEdit = (v: ProductVariant) => {
+    // Map the variant's saved images into the 4-slot preview array
+    const imgs: (string | null)[] = [null, null, null, null];
+    v.images.forEach((img, i) => { if (i < 4) imgs[i] = img; });
+    setPreviewImages(imgs);
+    setVariantName(v.name);
+    setHasGenerated(true);
+    setLoadedVariantId(v.id);
+    setLoadedVariantName(v.name);
+    setApplyError(null);
+    // Scroll the top of the page so the user sees the preview immediately
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cancelLoadedEdit = () => {
+    setLoadedVariantId(null);
+    setLoadedVariantName("");
+    setPreviewImages([null, null, null, null]);
+    setHasGenerated(false);
+    setVariantName("");
+    setApplyError(null);
+  };
+
   // ── Save variant ──────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!variantName.trim()) return;
     setSaving(true);
     try {
-      const id = crypto.randomUUID();
+      // When overwriting a loaded variant, delete the old storage files first
+      // then re-save under the same ID so it stays in the same list position.
+      const id = loadedVariantId ?? crypto.randomUUID();
+      if (loadedVariantId) {
+        await deleteVariant(merchantId, product.id, loadedVariantId);
+      }
       await saveVariant(merchantId, product.id, id, variantName.trim(), previewImages);
       const updated = await getVariants(merchantId, product.id);
       setSavedVariants(updated);
@@ -348,6 +383,8 @@ export default function VariantCreator({ product, merchantId }: Props) {
       setPreviewImages([null, null, null, null]);
       setHasGenerated(false);
       setVariantName("");
+      setLoadedVariantId(null);
+      setLoadedVariantName("");
     } catch (err) {
       console.error("saveVariant failed:", err);
     } finally {
@@ -632,6 +669,8 @@ export default function VariantCreator({ product, merchantId }: Props) {
             >
               {saving ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</>
+              ) : loadedVariantId ? (
+                <>Update variant</>
               ) : (
                 <>Save as variant</>
               )}
@@ -644,7 +683,17 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
         {/* ── Right: 2×2 preview ── */}
         <div className="flex flex-col gap-3">
-          <label className="text-xs text-muted-foreground uppercase tracking-widest">Preview</label>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-muted-foreground uppercase tracking-widest">Preview</label>
+            {loadedVariantId && (
+              <span className="flex items-center gap-1 rounded-full bg-primary/15 border border-primary/30 px-2 py-0.5 text-[10px] text-primary font-medium">
+                Editing: {loadedVariantName}
+                <button onClick={cancelLoadedEdit} className="ml-0.5 hover:text-primary/60 transition-colors" aria-label="Cancel edit">
+                  <X className="h-2.5 w-2.5" />
+                </button>
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-2 gap-2" style={{ width: 220 }}>
             {[0, 1, 2, 3].map((i) => {
               const src  = previewImages[i];
@@ -781,6 +830,11 @@ export default function VariantCreator({ product, merchantId }: Props) {
                     <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">
                       {v.images.length} image{v.images.length !== 1 ? "s" : ""}
                     </span>
+                    <button onClick={() => loadVariantForEdit(v)}
+                      className={`transition-colors flex-shrink-0 ${loadedVariantId === v.id ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
+                      aria-label="Open in editor">
+                      <Wand2 className="h-3.5 w-3.5" />
+                    </button>
                     <button onClick={() => startEdit(v)}
                       className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                       aria-label="Rename variant">
