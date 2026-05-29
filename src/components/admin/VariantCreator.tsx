@@ -670,7 +670,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
               {saving ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</>
               ) : loadedVariantId ? (
-                <>Update variant</>
+                <>Save variant</>
               ) : (
                 <>Save as variant</>
               )}

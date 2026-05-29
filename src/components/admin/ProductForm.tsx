@@ -552,7 +552,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           {(saving || altView0Generating || altView1Generating) && <Loader2 className="h-4 w-4 animate-spin" />}
           {saving ? "Saving…"
             : (altView0Generating || altView1Generating) ? "Generating top views…"
-            : isEditing ? "Update product" : "Save product"}
+            : "Save product"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={isBusy}>
           Cancel
