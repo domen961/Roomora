@@ -598,46 +598,16 @@ export async function generateVariant(
     ];
   };
 
-  // ── Color-transfer helper ────────────────────────────────────────────────────
-  // Used for slots 1, 2, 3 once the master (slot 0) is ready.
-  // Image 1 = target view (original, unmodified, at its own angle)
-  // Image 2 = master (slot 0 result — the single source of truth for color)
-  // Gemini's task: copy the exact coloring from Image 2 onto Image 1's angle.
-  // This is far more reliable than re-interpreting "dark brown" text independently
-  // for each angle — Gemini just matches pixels, not descriptions.
-  const buildColorTransferParts = (prepared: string, master: string): unknown[] => {
-    const prompt =
-      `You are generating a product photo variant for a furniture retailer.\n\n` +
-      `Image 1 — ANGLE TEMPLATE: the original ${furnitureType} at a specific camera angle (unmodified).\n` +
-      `Image 2 — COLOR TEMPLATE: the same ${furnitureType} with customer color selections applied.\n\n` +
-      `Task: Reproduce the ${furnitureType} using Image 1 as the angle/pose reference and Image 2 as the color reference.\n` +
-      `- Camera angle, framing, and proportions: copy from Image 1 exactly.\n` +
-      `- Colors and materials: copy from Image 2 exactly — identify every changed part and apply the same color.\n` +
-      `- Parts that are unchanged in Image 2 stay their original color from Image 1.\n\n` +
-      `CRITICAL: Your output viewpoint must match Image 1, not Image 2. ` +
-      `Treat Image 1 as the structural template and Image 2 as the paint/color guide only.\n\n` +
-      `Keep: lighting direction, shadow shape, material texture, white background.\n` +
-      `Output: one product photo only. No text.`;
-    return [
-      { text: prompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(master) } },
-    ];
-  };
-
-  // ── Generate all slots sequentially (one at a time) ────────────────────────
-  // Running slots in parallel fires multiple Gemini image requests simultaneously
-  // and reliably hits the per-minute rate limit (429). Sequential execution avoids
-  // this with zero extra latency on the *first* slot (user sees progressive fills).
-  //
-  // Order: 0 → 1 → 2 → 3
-  // Slots 0 and 1: direct modification with the colour swatch as visual anchor.
-  // Slots 2 and 3: colour-transfer from slot 0 result (avoids phantom colours on
-  //               the ambiguous 75° overhead angle).
+  // ── Generate all 4 slots sequentially with direct modification ──────────────
+  // Color-transfer (using slot 0 as master for slots 2+3) was tried but fails to
+  // copy structural-part changes (e.g. leg color) across very different angles —
+  // a 28° perspective leg and a 75° overhead leg look completely different to Gemini
+  // so it can't reliably identify them as "the same part to recolor".
+  // Direct modification with the improved prompt (explicit swatches + mandatory language)
+  // is more reliable across all angles.
   const results: (string | null)[] = [null, null, null, null];
 
-  // ── Slots 0 and 1: direct modification ───────────────────────────────────
-  for (const i of [0, 1]) {
+  for (const i of [0, 1, 2, 3]) {
     const img = dataUrls[i];
     if (!img) { onSlotReady?.(i, null); continue; }
     try {
@@ -647,41 +617,6 @@ export async function generateVariant(
         return null;
       });
       onSlotReady?.(i, results[i]);
-    } catch (err) {
-      console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
-      onSlotReady?.(i, null);
-    }
-  }
-
-  // ── Slots 2 and 3: colour-transfer from the master (slot 0 or 1) ─────────
-  const masterResult  = results[0] ?? results[1];
-  const masterResized = masterResult
-    ? await resizeImage(masterResult, 1024, 1024, 0.92)
-    : null;
-
-  for (const i of [2, 3]) {
-    const img = dataUrls[i];
-    if (!img) { onSlotReady?.(i, null); continue; }
-    try {
-      const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-      let result: string | null = null;
-
-      if (masterResized) {
-        result = await callGemini(buildColorTransferParts(prepared, masterResized)).catch((err) => {
-          console.error(`generateVariant: color-transfer slot ${i} failed:`, err instanceof Error ? err.message : err);
-          return null;
-        });
-      }
-      // Fallback: direct modification if master unavailable
-      if (!result) {
-        result = await callGemini(buildGeminiParts(prepared)).catch((err) => {
-          console.error(`generateVariant: direct fallback slot ${i} failed:`, err instanceof Error ? err.message : err);
-          return null;
-        });
-      }
-
-      results[i] = result;
-      onSlotReady?.(i, result);
     } catch (err) {
       console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
       onSlotReady?.(i, null);
