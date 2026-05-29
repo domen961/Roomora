@@ -470,11 +470,22 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h3 className="text-sm font-medium text-foreground mb-0.5">Variant Creator</h3>
-        <p className="text-xs text-muted-foreground">
-          Generate color or material variations of this product.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-medium text-foreground mb-0.5">Variant Creator</h3>
+          <p className="text-xs text-muted-foreground">
+            Generate color or material variations of this product.
+          </p>
+        </div>
+        <button
+          onClick={cancelLoadedEdit}
+          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5
+                     text-xs text-foreground hover:bg-secondary hover:border-primary/40 transition-colors
+                     flex-shrink-0"
+        >
+          <Plus className="h-3.5 w-3.5" />
+          New variant
+        </button>
       </div>
 
       {/* ── Import from URL ── */}
