@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X, Wand2 } from "lucide-react";
+import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X } from "lucide-react";
 import { generateVariant, type VariantPart } from "@/lib/gemini";
 import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant } from "@/lib/db";
 import type { Product } from "@/lib/products";
@@ -782,8 +782,15 @@ export default function VariantCreator({ product, merchantId }: Props) {
         ) : (
           <div className="flex flex-col gap-1.5">
             {savedVariants.map((v) => (
-              <div key={v.id}
-                className="flex items-center gap-3 rounded-lg border border-border bg-card px-3 py-2">
+              <div
+                key={v.id}
+                onClick={() => { if (editingVariantId !== v.id) loadVariantForEdit(v); }}
+                className={`flex items-center gap-3 rounded-lg border bg-card px-3 py-2 cursor-pointer transition-colors ${
+                  loadedVariantId === v.id
+                    ? "border-primary/50 bg-primary/5"
+                    : "border-border hover:border-primary/30 hover:bg-secondary/40"
+                }`}
+              >
 
                 {/* Thumbnail */}
                 {v.images[0] ? (
@@ -791,7 +798,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
                     src={v.images[0]}
                     alt={v.name}
                     className="w-10 h-10 object-contain rounded border border-border flex-shrink-0 cursor-zoom-in"
-                    onClick={() => setPreviewUrl(v.images[0])}
+                    onClick={(e) => { e.stopPropagation(); setPreviewUrl(v.images[0]); }}
                   />
                 ) : (
                   <div className="w-10 h-10 rounded border border-border bg-muted flex-shrink-0 flex items-center justify-center">
@@ -805,6 +812,7 @@ export default function VariantCreator({ product, merchantId }: Props) {
                     <input
                       autoFocus
                       value={editingName}
+                      onClick={(e) => e.stopPropagation()}
                       onChange={(e) => setEditingName(e.target.value)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter")  commitEdit(v);
@@ -813,12 +821,12 @@ export default function VariantCreator({ product, merchantId }: Props) {
                       className="flex-1 rounded border border-input bg-background px-2 py-0.5 text-xs
                                  text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
                     />
-                    <button onClick={() => commitEdit(v)}
+                    <button onClick={(e) => { e.stopPropagation(); commitEdit(v); }}
                       className="text-primary hover:text-primary/80 transition-colors flex-shrink-0"
                       aria-label="Save name">
                       <Check className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={cancelEdit}
+                    <button onClick={(e) => { e.stopPropagation(); cancelEdit(); }}
                       className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                       aria-label="Cancel">
                       <X className="h-3.5 w-3.5" />
@@ -830,17 +838,12 @@ export default function VariantCreator({ product, merchantId }: Props) {
                     <span className="text-[10px] text-muted-foreground/60 flex-shrink-0">
                       {v.images.length} image{v.images.length !== 1 ? "s" : ""}
                     </span>
-                    <button onClick={() => loadVariantForEdit(v)}
-                      className={`transition-colors flex-shrink-0 ${loadedVariantId === v.id ? "text-primary" : "text-muted-foreground hover:text-primary"}`}
-                      aria-label="Open in editor">
-                      <Wand2 className="h-3.5 w-3.5" />
-                    </button>
-                    <button onClick={() => startEdit(v)}
+                    <button onClick={(e) => { e.stopPropagation(); startEdit(v); }}
                       className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
                       aria-label="Rename variant">
                       <Pencil className="h-3.5 w-3.5" />
                     </button>
-                    <button onClick={() => handleDelete(v.id)}
+                    <button onClick={(e) => { e.stopPropagation(); handleDelete(v.id); }}
                       className="text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
                       aria-label="Delete variant">
                       <Trash2 className="h-3.5 w-3.5" />
