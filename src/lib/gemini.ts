@@ -546,7 +546,9 @@ export async function generateVariant(
     p.modification.type === "color" ? createColorSwatch(p.modification.hexColor) : null,
   );
 
-  // ── Build Gemini parts array for a single product photo ─────────────────────
+  // ── Build Gemini parts array for direct modification (slot 0 / master) ──────
+  // Sends: product photo + color swatches. Gemini interprets the hex/description
+  // and applies the changes directly. Works well on perspective-view product photos.
   const buildGeminiParts = (prepared: string): unknown[] => {
     const refImages: string[] = [];
     parts.forEach((_, i) => {
@@ -554,7 +556,6 @@ export async function generateVariant(
       if (img) refImages.push(img);
     });
 
-    // Build one bullet line per part, with explicit swatch references
     let imgSlot = 2; // image 1 = product photo; image 2+ = swatches/textures
     const changeLines = parts.map((p, i) => {
       const ref  = swatches[i] ?? textures[i];
@@ -567,13 +568,11 @@ export async function generateVariant(
         ? ` (image ${imgSlot} = ${swatches[i] ? "exact solid-color swatch — match this color precisely" : "texture sample — apply this material"})`
         : "";
       if (ref) imgSlot++;
-      // Wrap the part name and keep the line punchy
       return `• ${p.targetPart}: recolor to ${desc}${swatchNote}`;
     });
 
     const many = parts.length > 1;
     const prompt =
-      // Frame it so Gemini understands this is a legitimate furniture customisation job
       `You are generating a product photo variant for a furniture retailer. ` +
       `A customer has chosen specific colors/textures for parts of this ${furnitureType}. ` +
       `Your task: apply the customer's selections exactly as specified.\n\n` +
@@ -598,21 +597,102 @@ export async function generateVariant(
     ];
   };
 
-  // ── Generate all 4 slots sequentially with direct modification ──────────────
-  // Color-transfer (using slot 0 as master for slots 2+3) was tried but fails to
-  // copy structural-part changes (e.g. leg color) across very different angles —
-  // a 28° perspective leg and a 75° overhead leg look completely different to Gemini
-  // so it can't reliably identify them as "the same part to recolor".
-  // Direct modification with the improved prompt (explicit swatches + mandatory language)
-  // is more reliable across all angles.
+  // ── Build Gemini parts for color-match generation (slots 1–3) ───────────────
+  // Sends: base image + slot-0 result (color master) + swatches.
+  // Gemini is told: "Image 2 shows the correct colors from a different angle — match
+  // those colors in Image 1. Image 1 and Image 2 are the same product from different
+  // viewpoints." This avoids re-interpreting hex codes across very different angles
+  // (28° perspective vs 75° overhead) where structural parts look completely different.
+  const buildColorMatchParts = (prepared: string, masterResult: string): unknown[] => {
+    const refImages: string[] = [];
+    parts.forEach((_, i) => {
+      const img = swatches[i] ?? textures[i];
+      if (img) refImages.push(img);
+    });
+
+    const changeLines = parts.map((p) => {
+      const desc = p.modification.type === "color"
+        ? (p.modification.description?.trim()
+            ? `${p.modification.description.trim()} (hex ${p.modification.hexColor})`
+            : `color ${p.modification.hexColor}`)
+        : "texture (see texture sample below)";
+      return `• ${p.targetPart}: ${desc}`;
+    });
+
+    const swatchCount = refImages.length;
+    const prompt =
+      `You are generating a product photo variant for a furniture retailer.\n\n` +
+      `Image 1 — ${furnitureType} product photo to modify (one specific camera angle).\n` +
+      `Image 2 — the SAME ${furnitureType} with the customer's color choices already applied, ` +
+      `photographed from a DIFFERENT camera angle. ` +
+      `Use Image 2 as a COLOR REFERENCE ONLY — match the exact colors shown, but keep Image 1's camera angle.\n` +
+      (swatchCount > 0
+        ? `Images 3–${2 + swatchCount} — solid color swatches confirming the exact target colors.\n`
+        : ``) +
+      `\nCustomer color selections:\n` +
+      `${changeLines.join("\n")}\n\n` +
+      `Requirements:\n` +
+      `- Apply the SAME colors visible in Image 2 to the corresponding parts of Image 1.\n` +
+      `- Image 1 and Image 2 are the same product from DIFFERENT camera angles — focus on color matching, not structure.\n` +
+      (swatchCount > 0
+        ? `- The color swatches confirm exact hue and lightness — use them for precision.\n`
+        : ``) +
+      `- Every listed part MUST be recolored. Do not leave any listed part at its original color.\n` +
+      `- Recolor ONLY the listed parts. All other surfaces stay exactly as in Image 1.\n` +
+      `- Preserve Image 1's camera angle, lighting, shadows, and composition exactly.\n` +
+      `- White background. No room context.\n` +
+      `Output: ONE product photo with all customer color selections applied. No text.`;
+
+    return [
+      { text: prompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },       // Image 1: base to modify
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },    // Image 2: color master reference
+      ...refImages.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // swatches
+    ];
+  };
+
+  // ── Generate all 4 slots sequentially ───────────────────────────────────────
+  // Strategy:
+  //   Slot 0 (perspective ~28°) — direct modification via buildGeminiParts.
+  //                                This view is the "master": colors are most reliable here.
+  //   Slots 1–3 — use slot 0 result as a color reference via buildColorMatchParts.
+  //               Gemini receives both the base image (for angle) and the slot-0 result
+  //               (for colors), with explicit "same product, different angle" framing.
+  //               This avoids the failure mode where Gemini re-interprets hex codes
+  //               independently per slot and drifts (especially on 75° overhead views).
+  //   Fallback: if slot 0 fails, slots 1–3 fall back to direct modification.
   const results: (string | null)[] = [null, null, null, null];
 
-  for (const i of [0, 1, 2, 3]) {
+  // ── Slot 0: direct modification (master) ────────────────────────────────────
+  const img0 = dataUrls[0];
+  if (img0) {
+    try {
+      const prepared = await prepareProductImage(img0, 1024, 1024, 0.92);
+      results[0] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+        console.error("generateVariant: callGemini slot 0 failed:", err instanceof Error ? err.message : err);
+        return null;
+      });
+      onSlotReady?.(0, results[0]);
+    } catch (err) {
+      console.error("generateVariant: slot 0 unexpected error:", err instanceof Error ? err.message : err);
+      onSlotReady?.(0, null);
+    }
+  } else {
+    onSlotReady?.(0, null);
+  }
+
+  // ── Slots 1–3: color-match from master ──────────────────────────────────────
+  for (const i of [1, 2, 3]) {
     const img = dataUrls[i];
     if (!img) { onSlotReady?.(i, null); continue; }
     try {
       const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-      results[i] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
+      const masterRef = results[0];
+      // Use color-match if master succeeded; fall back to direct if it failed
+      const geminiParts = masterRef
+        ? buildColorMatchParts(prepared, masterRef)
+        : buildGeminiParts(prepared);
+      results[i] = await callGemini(geminiParts).catch((err) => {
         console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
         return null;
       });
