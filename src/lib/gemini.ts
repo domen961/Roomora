@@ -586,7 +586,8 @@ export async function generateVariant(
       `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
       `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
       `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
-      `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, material texture (smooth/fabric/wood grain), proportions, and camera angle.\n` +
+      `- Apply the new color as a SOLID, OPAQUE finish that completely replaces the original color. No wood grain, no previous color bleeding through, no ghosting of the original tone. The recolored part must look as if it was manufactured in the new color from scratch.\n` +
+      `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, proportions, and camera angle.\n` +
       `- White background. No room context.\n` +
       `Output: ONE product photo with all customer color selections applied. No text.`;
 
@@ -611,25 +612,31 @@ export async function generateVariant(
     variant: "perspective" | "front",
   ): unknown[] => {
     const partNames = parts.map((p) => p.targetPart).join(", ");
+
+    // Both variants are extreme overhead views — be very explicit so Gemini doesn't
+    // produce a shallow product-photo angle that looks like the slot-0 perspective.
     const viewDesc = variant === "perspective"
-      ? "almost directly overhead from a slightly diagonal (3/4) angle — " +
-        "top surface (seat/cushion/tabletop) dominates the frame; " +
-        "legs visible only as short stubs at the corners spreading slightly outward"
-      : "almost directly overhead, positioned directly in front — " +
-        "looking steeply down at the front face from above; " +
-        "top surface occupies most of the upper portion; " +
-        "legs visible as short stubs at the bottom corners";
+      ? "a NEARLY OVERHEAD bird's-eye view from a slight 3/4 diagonal. " +
+        "The camera is 75° above horizontal — almost straight down. " +
+        "The seat/top surface FILLS most of the frame; the backrest appears as a narrow strip at the far edge. " +
+        "The four legs are barely visible — tiny stubby projections at the bottom corners. " +
+        "This is NOT a standard product photo angle. It looks like a drone shot from directly above."
+      : "a NEARLY OVERHEAD bird's-eye view from directly in front. " +
+        "The camera is 75° above horizontal — almost straight down. " +
+        "The seat/top surface FILLS most of the frame; the front face of the backrest is a thin sliver at the bottom. " +
+        "The legs appear as tiny short stubs at the bottom corners only. " +
+        "This is NOT a standard product photo angle. It looks like a drone shot from above.";
 
     const prompt =
       `You receive a product photo of a ${furnitureType} with custom colors applied.\n` +
-      `Re-render this exact same ${furnitureType} as seen from a camera elevated at ` +
-      `approximately 75° above horizontal — ${viewDesc}.\n\n` +
+      `Re-render this exact same ${furnitureType} from ${viewDesc}\n\n` +
       `Critical requirements:\n` +
+      `- The camera angle MUST be a steep overhead view — 75° above horizontal. Do not produce a standard low-angle product photo.\n` +
       `- Keep ALL colors and materials EXACTLY as shown in the input image — only the camera angle changes.\n` +
       `- The custom colors on ${partNames} must be preserved exactly in the output.\n` +
       `- Maintain the same material textures, surface finish, and proportions.\n` +
-      `- White background. Single object only, centred. No shadows, no room context.\n` +
-      `Output: ONE product photo from the 75° overhead angle. No text.`;
+      `- White background. Single object only, centred. No room context.\n` +
+      `Output: ONE product photo from the steep 75° overhead angle. No text.`;
 
     return [
       { text: prompt },
