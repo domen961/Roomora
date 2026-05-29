@@ -470,22 +470,11 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-sm font-medium text-foreground mb-0.5">Variant Creator</h3>
-          <p className="text-xs text-muted-foreground">
-            Generate color or material variations of this product.
-          </p>
-        </div>
-        <button
-          onClick={cancelLoadedEdit}
-          className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5
-                     text-xs text-foreground hover:bg-secondary hover:border-primary/40 transition-colors
-                     flex-shrink-0"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New variant
-        </button>
+      <div>
+        <h3 className="text-sm font-medium text-foreground mb-0.5">Variant Creator</h3>
+        <p className="text-xs text-muted-foreground">
+          Generate color or material variations of this product.
+        </p>
       </div>
 
       {/* ── Import from URL ── */}
@@ -788,10 +777,27 @@ export default function VariantCreator({ product, merchantId }: Props) {
 
         {!variantsLoaded ? (
           <p className="text-xs text-muted-foreground">Loading…</p>
-        ) : savedVariants.length === 0 ? (
-          <p className="text-xs text-muted-foreground">No variants yet.</p>
         ) : (
           <div className="flex flex-col gap-1.5">
+            {/* New variant row — always first */}
+            <div
+              onClick={cancelLoadedEdit}
+              className={`flex items-center gap-3 rounded-lg border bg-card px-3 py-2 cursor-pointer transition-colors ${
+                !loadedVariantId
+                  ? "border-primary/50 bg-primary/5"
+                  : "border-dashed border-border hover:border-primary/40 hover:bg-secondary/40"
+              }`}
+            >
+              <div className="w-10 h-10 rounded border border-dashed border-border flex items-center justify-center flex-shrink-0">
+                <Plus className="h-4 w-4 text-muted-foreground" />
+              </div>
+              <span className="flex-1 text-xs text-muted-foreground">New variant</span>
+            </div>
+
+            {savedVariants.length === 0 && (
+              <p className="text-xs text-muted-foreground px-1">No variants yet. Click above to start.</p>
+            )}
+
             {savedVariants.map((v) => (
               <div
                 key={v.id}
