@@ -371,12 +371,117 @@ export async function renameVariant(
 }
 
 /** Fetch all merchants — superadmin only (RLS enforced) */
-export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null }[]> {
+export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null; gen_points_balance: number; subscription_tier: string }[]> {
   const { data, error } = await supabase
     .from("merchants")
-    .select("id, shop_name")
+    .select("id, shop_name, gen_points_balance, subscription_tier")
     .order("created_at");
 
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []).map((row) => ({
+    id:                  row.id         as string,
+    shop_name:           row.shop_name  as string | null,
+    gen_points_balance:  (row.gen_points_balance as number) ?? 0,
+    subscription_tier:   (row.subscription_tier  as string) ?? "free",
+  }));
+}
+
+// ── Gen Points ──────────────────────────────────────────────────────────────
+
+export interface GenPointTransaction {
+  id:         string;
+  amount:     number;
+  type:       string;
+  note:       string | null;
+  created_at: string;
+}
+
+export interface MerchantStats {
+  balance:          number;
+  tier:             string;
+  usedThisMonth:    number;
+  transactions:     GenPointTransaction[];
+}
+
+/** Fetch Gen Point balance, tier, and transaction history for a merchant */
+export async function getMerchantStats(merchantId: string): Promise<MerchantStats> {
+  const [merchantRes, txRes] = await Promise.all([
+    supabase
+      .from("merchants")
+      .select("gen_points_balance, subscription_tier")
+      .eq("id", merchantId)
+      .single(),
+    supabase
+      .from("gen_point_transactions")
+      .select("id, amount, type, note, created_at")
+      .eq("merchant_id", merchantId)
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
+
+  if (merchantRes.error) throw new Error(merchantRes.error.message);
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+  const transactions = (txRes.data ?? []) as GenPointTransaction[];
+  const usedThisMonth = transactions
+    .filter((t) => t.amount < 0 && t.created_at >= monthStart)
+    .reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  return {
+    balance:       (merchantRes.data.gen_points_balance as number) ?? 0,
+    tier:          (merchantRes.data.subscription_tier  as string) ?? "free",
+    usedThisMonth,
+    transactions,
+  };
+}
+
+/** Grant Gen Points to a merchant — superadmin action */
+export async function grantGenPoints(merchantId: string, amount: number, note: string): Promise<void> {
+  const { data: merchant, error: fetchErr } = await supabase
+    .from("merchants")
+    .select("gen_points_balance")
+    .eq("id", merchantId)
+    .single();
+  if (fetchErr) throw new Error(fetchErr.message);
+
+  const newBalance = ((merchant.gen_points_balance as number) ?? 0) + amount;
+  const { error: updateErr } = await supabase
+    .from("merchants")
+    .update({ gen_points_balance: newBalance })
+    .eq("id", merchantId);
+  if (updateErr) throw new Error(updateErr.message);
+
+  const { error: txErr } = await supabase.from("gen_point_transactions").insert({
+    merchant_id: merchantId,
+    amount,
+    type: "admin_grant",
+    note: note || null,
+  });
+  if (txErr) throw new Error(txErr.message);
+}
+
+const TIER_DEFAULTS: Record<string, number> = {
+  free:  25,
+  tier1: 500,
+  tier2: 1000,
+  tier3: 999999, // effectively unlimited — checked by tier name, not balance
+};
+
+/** Change a merchant's subscription tier and reset their balance — superadmin action */
+export async function setMerchantTier(merchantId: string, tier: string): Promise<void> {
+  const newBalance = TIER_DEFAULTS[tier] ?? 25;
+  const { error: updateErr } = await supabase
+    .from("merchants")
+    .update({ subscription_tier: tier, gen_points_balance: newBalance })
+    .eq("id", merchantId);
+  if (updateErr) throw new Error(updateErr.message);
+
+  const { error: txErr } = await supabase.from("gen_point_transactions").insert({
+    merchant_id: merchantId,
+    amount:      newBalance,
+    type:        "subscription_credit",
+    note:        `Tier changed to ${tier}`,
+  });
+  if (txErr) throw new Error(txErr.message);
 }

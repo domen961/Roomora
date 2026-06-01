@@ -39,6 +39,16 @@ export function useAuth(): AuthState {
       .select("is_superadmin")
       .eq("id", userId)
       .single();
+
+    // First-time Google OAuth login: merchants row doesn't exist yet — create it
+    if (!data) {
+      const { data: { user } } = await supabase.auth.getUser();
+      await supabase.from("merchants").insert({
+        id:        userId,
+        shop_name: user?.user_metadata?.full_name ?? user?.email?.split("@")[0] ?? null,
+      }).then(() => {}); // ignore duplicate insert errors
+    }
+
     setIsSuperadmin(data?.is_superadmin ?? false);
     setLoading(false);
   }

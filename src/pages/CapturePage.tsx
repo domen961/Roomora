@@ -4,6 +4,7 @@ import { Camera, Download, ImageIcon, Loader2, AlertCircle, RefreshCw, RotateCcw
 import { supabase } from "@/lib/supabase";
 import { getProducts, getVariants, type ProductVariant } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
+import { consumeGenPoint } from "@/lib/quota";
 import Logo from "@/components/Logo";
 import VariantPicker from "@/components/VariantPicker";
 import type { Product } from "@/lib/products";
@@ -95,6 +96,14 @@ export default function CapturePage() {
     try {
       if (isDirectMode && product) {
         // ── DIRECT MODE: phone runs Gemini itself ────────────────────────────
+        // Check Gen Point quota before calling Gemini
+        const quota = await consumeGenPoint(merchantId);
+        if (!quota.ok) {
+          setPhase("error");
+          setError("This store has used all its Gen Points for this period.");
+          return;
+        }
+
         // Use the selected variant's images, or the base product images if index 0
         const activeImages = variantIndex === 0
           ? product.images

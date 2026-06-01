@@ -4,6 +4,7 @@ import QRCode from "qrcode";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { placeInRoom } from "@/lib/gemini";
+import { consumeGenPoint } from "@/lib/quota";
 import { supabase } from "@/lib/supabase";
 import Logo from "@/components/Logo";
 
@@ -122,6 +123,14 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
       onPhotoReady?.(roomPhoto);   // notify parent so it can store photo for regenerate
       setPhase("processing");
       try {
+        // Check Gen Point quota before calling Gemini (fails open on server errors)
+        const quota = await consumeGenPoint(merchantId);
+        if (!quota.ok) {
+          setErrorMsg("You've used all your Gen Points for this period. Please upgrade your plan to continue generating.");
+          setPhase("error");
+          return;
+        }
+
         const activeImages = productImagesOverride ?? product.images;
         const result = await placeInRoom(activeImages, roomPhoto, product.name, product.description, undefined, product.category);
 
