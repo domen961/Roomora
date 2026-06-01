@@ -593,6 +593,7 @@ export async function generateVariant(
       `${changeLines.join("\n")}\n\n` +
       `Requirements:\n` +
       `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
+      `- When the target part refers to the whole furniture or a large section (e.g. "whole sofa", "entire chair", "the sofa"), apply the change to EVERY visible surface — main body, seat cushions, back cushions/pillows, armrests, side panels, and any separate loose pieces. No part of the furniture should remain in the original color.\n` +
       `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
       `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
       `- The new color must fully replace the original hue — no ghosting or bleed-through of the old color. Apply it like a painted or lacquered finish: the hue is completely new, but the underlying wood grain texture, surface relief, and highlight/shadow shading from the original material are preserved and visible through the new color.\n` +
