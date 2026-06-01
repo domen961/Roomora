@@ -7,6 +7,7 @@ import ProductForm from "./ProductForm";
 import VariantCreator from "./VariantCreator";
 import CatalogGrid from "./CatalogGrid";
 import EmbedSetup from "./EmbedSetup";
+import AccountTab from "./AccountTab";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getProducts, deleteProduct, getAllMerchants,
@@ -16,7 +17,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import type { Product } from "@/lib/products";
 
-type Tab  = "catalog" | "embed" | "stats";
+type Tab  = "catalog" | "embed" | "stats" | "account";
 type View = "catalog" | "add" | "edit";
 
 const TIER_LABELS: Record<string, string> = {
@@ -234,7 +235,7 @@ export default function AdminPage() {
         {/* ── Tabs (hidden while in form view) ── */}
         {!inForm && (
           <div className="border-b border-border px-6 flex gap-0">
-            {(["catalog", "embed", ...(isSuperadmin ? ["stats"] : [])] as Tab[]).map((t) => (
+            {(["catalog", "embed", ...(isSuperadmin ? ["stats"] : []), "account"] as Tab[]).map((t) => (
               <button
                 key={t}
                 onClick={() => { setTab(t); setView("catalog"); setEditingProduct(null); }}
@@ -485,6 +486,14 @@ export default function AdminPage() {
                   </div>
                 )}
               </div>
+            </div>
+          )}
+
+          {/* ── ACCOUNT TAB ── */}
+          {!inForm && tab === "account" && user && (
+            <div className="flex flex-col gap-6">
+              <h1 className="text-2xl text-foreground">Account settings</h1>
+              <AccountTab user={user} merchantId={activeMerchantId} />
             </div>
           )}
 

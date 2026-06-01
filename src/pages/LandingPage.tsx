@@ -150,6 +150,94 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pricing */}
+      <section className="border-t border-border px-6 py-24 bg-card/40">
+        <div className="max-w-5xl mx-auto flex flex-col gap-12">
+          <div className="text-center flex flex-col gap-3">
+            <h2 className="text-3xl font-light tracking-wide">Simple, transparent pricing</h2>
+            <p className="text-muted-foreground">One Gen Point = one customer AR placement. No hidden fees.</p>
+          </div>
+
+          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
+            {[
+              {
+                name:     "Free",
+                price:    "€0",
+                points:   "25 AR try-ons",
+                popular:  false,
+                features: ["25 Gen Points included", "Variant creator", "Embed on any website", "Community support"],
+                cta:      { label: "Get started free", href: "/login", disabled: false },
+              },
+              {
+                name:     "Starter",
+                price:    "€120",
+                points:   "500 AR try-ons / mo",
+                popular:  false,
+                features: ["500 Gen Points / month", "Variant creator", "Embed on any website", "Email support"],
+                cta:      { label: "Coming soon", href: null, disabled: true },
+              },
+              {
+                name:     "Pro",
+                price:    "€240",
+                points:   "1,000 AR try-ons / mo",
+                popular:  true,
+                features: ["1,000 Gen Points / month", "Variant creator", "Embed on any website", "Priority support"],
+                cta:      { label: "Coming soon", href: null, disabled: true },
+              },
+              {
+                name:     "Unlimited",
+                price:    "€480",
+                points:   "Unlimited AR try-ons",
+                popular:  false,
+                features: ["Unlimited Gen Points", "Variant creator", "Embed on any website", "Dedicated support"],
+                cta:      { label: "Coming soon", href: null, disabled: true },
+              },
+            ].map((plan) => (
+              <div
+                key={plan.name}
+                className={`relative rounded-xl border bg-card flex flex-col gap-5 p-6 ${
+                  plan.popular ? "border-primary/60 shadow-lg shadow-primary/10" : "border-border"
+                }`}
+              >
+                {plan.popular && (
+                  <span className="absolute -top-3 left-1/2 -translate-x-1/2 text-[10px] font-semibold uppercase tracking-widest bg-primary text-primary-foreground rounded-full px-3 py-0.5">
+                    Most popular
+                  </span>
+                )}
+
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs text-muted-foreground uppercase tracking-widest">{plan.name}</p>
+                  <p className="text-3xl font-light text-foreground">{plan.price}<span className="text-base text-muted-foreground">{plan.price !== "€0" ? " /mo" : ""}</span></p>
+                  <p className="text-xs text-primary">{plan.points}</p>
+                </div>
+
+                <ul className="flex flex-col gap-2 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2 text-xs text-muted-foreground">
+                      <span className="text-primary mt-0.5 flex-shrink-0">✓</span>
+                      {f}
+                    </li>
+                  ))}
+                </ul>
+
+                {plan.cta.disabled ? (
+                  <button disabled className="w-full rounded-md border border-border py-2.5 text-xs text-muted-foreground cursor-not-allowed opacity-50">
+                    {plan.cta.label}
+                  </button>
+                ) : (
+                  <Link
+                    to={plan.cta.href!}
+                    className="w-full rounded-md bg-primary text-primary-foreground py-2.5 text-xs font-medium text-center hover:bg-primary/90 transition-colors"
+                  >
+                    {plan.cta.label}
+                  </Link>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="border-t border-border px-6 py-24">
         <div className="max-w-xl mx-auto flex flex-col items-center gap-6 text-center">
