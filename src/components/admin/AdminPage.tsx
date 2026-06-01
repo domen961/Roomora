@@ -10,7 +10,7 @@ import EmbedSetup from "./EmbedSetup";
 import { useAuth } from "@/hooks/useAuth";
 import {
   getProducts, deleteProduct, getAllMerchants,
-  getMerchantStats, grantGenPoints, setMerchantTier,
+  getMerchantStats, grantGenPoints, setMerchantTier, updateShopName,
   type MerchantStats,
 } from "@/lib/db";
 import { supabase } from "@/lib/supabase";
@@ -44,8 +44,13 @@ export default function AdminPage() {
   const [activeMerchantId, setActiveMerchantId] = useState<string>("");
 
   // Current merchant's balance for the header chip
-  const [balance, setBalance] = useState<number | null>(null);
-  const [tier,    setTier]    = useState<string>("free");
+  const [balance,   setBalance]   = useState<number | null>(null);
+  const [tier,      setTier]      = useState<string>("free");
+
+  // Shop name setup (for Google OAuth users who skipped the registration form)
+  const [shopName,        setShopName]        = useState<string | null>(null);
+  const [shopNameInput,   setShopNameInput]   = useState("");
+  const [shopNameSaving,  setShopNameSaving]  = useState(false);
 
   // Stats tab state
   const [selectedMerchantId,    setSelectedMerchantId]    = useState<string | null>(null);
@@ -74,9 +79,12 @@ export default function AdminPage() {
       .then(setProducts)
       .catch(console.error)
       .finally(() => setProductsLoading(false));
-    // Fetch balance for header chip
+    // Fetch balance + shop name
     getMerchantStats(activeMerchantId)
       .then((s) => { setBalance(s.balance); setTier(s.tier); })
+      .catch(() => {});
+    supabase.from("merchants").select("shop_name").eq("id", activeMerchantId).single()
+      .then(({ data }) => { setShopName(data?.shop_name ?? null); })
       .catch(() => {});
   }, [activeMerchantId]);
 
@@ -98,6 +106,19 @@ export default function AdminPage() {
   const handleSignOut = async () => {
     await supabase.auth.signOut();
     navigate("/login");
+  };
+
+  // ── Shop name setup ──────────────────────────────────────────────────────
+  const handleSaveShopName = async () => {
+    if (!shopNameInput.trim() || !activeMerchantId) return;
+    setShopNameSaving(true);
+    try {
+      await updateShopName(activeMerchantId, shopNameInput.trim());
+      setShopName(shopNameInput.trim());
+      setShopNameInput("");
+      if (isSuperadmin) getAllMerchants().then(setMerchants).catch(console.error);
+    } catch (err) { console.error(err); }
+    finally { setShopNameSaving(false); }
   };
 
   // ── Stats tab helpers ────────────────────────────────────────────────────
@@ -225,6 +246,36 @@ export default function AdminPage() {
                 {t}
               </button>
             ))}
+          </div>
+        )}
+
+        {/* ── Shop name setup banner — shown when merchant has no shop name yet ── */}
+        {!isSuperadmin && shopName === null && (
+          <div className="border-b border-primary/20 bg-primary/5 px-6 py-3 flex items-center gap-3 flex-wrap">
+            <p className="text-xs text-foreground font-medium flex-shrink-0">
+              👋 What's your shop name?
+            </p>
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <input
+                type="text"
+                placeholder="e.g. TC Meble, Studio Sofa…"
+                value={shopNameInput}
+                onChange={(e) => setShopNameInput(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSaveShopName(); }}
+                className="flex-1 min-w-0 rounded border border-input bg-background px-3 py-1.5
+                           text-xs text-foreground placeholder:text-muted-foreground
+                           focus:outline-none focus:ring-1 focus:ring-ring"
+              />
+              <button
+                onClick={handleSaveShopName}
+                disabled={shopNameSaving || !shopNameInput.trim()}
+                className="rounded border border-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5
+                           text-xs font-medium text-foreground transition-colors
+                           disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5 flex-shrink-0"
+              >
+                {shopNameSaving ? <><Loader2 className="h-3 w-3 animate-spin" />Saving…</> : "Save"}
+              </button>
+            </div>
           </div>
         )}
 

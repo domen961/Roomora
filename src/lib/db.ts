@@ -370,6 +370,15 @@ export async function renameVariant(
   if (error) throw new Error(error.message);
 }
 
+/** Update the current merchant's shop name */
+export async function updateShopName(merchantId: string, shopName: string): Promise<void> {
+  const { error } = await supabase
+    .from("merchants")
+    .update({ shop_name: shopName.trim() })
+    .eq("id", merchantId);
+  if (error) throw new Error(error.message);
+}
+
 /** Fetch all merchants — superadmin only (RLS enforced) */
 export async function getAllMerchants(): Promise<{ id: string; shop_name: string | null; gen_points_balance: number; subscription_tier: string }[]> {
   const { data, error } = await supabase
