@@ -588,6 +588,7 @@ export async function generateVariant(
       `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
       `- The new color must fully replace the original hue — no ghosting or bleed-through of the old color. Apply it like a painted or lacquered finish: the hue is completely new, but the underlying wood grain texture, surface relief, and highlight/shadow shading from the original material are preserved and visible through the new color.\n` +
       `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, proportions, and camera angle.\n` +
+      `- CRITICAL: Preserve the exact framing, zoom level, and crop of image 1. The entire product must be visible — do not zoom in, do not reframe, do not show only a portion of the product. The output composition must be pixel-for-pixel identical to image 1 in terms of what is included in the frame.\n` +
       `- White background. No room context.\n` +
       `Output: ONE product photo with all customer color selections applied. No text.`;
 
