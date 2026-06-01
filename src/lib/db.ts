@@ -194,11 +194,23 @@ export async function deleteProduct(
 
 // ── Product Variant CRUD ───────────────────────────────────────────────────────
 
+/** Serialised form of a PartRow stored in the DB (textures as storage URLs, not data URLs) */
+export interface StoredPartConfig {
+  id:              string;
+  targetPart:      string;
+  mode:            "color" | "texture";
+  colorHex:        string;
+  colorDesc:       string;
+  hexAutoResolved: boolean;
+  textureUrl:      string | null;  // Supabase storage URL or null
+}
+
 export interface ProductVariant {
-  id:         string;
-  product_id: string;
-  name:       string;
-  images:     string[];   // [image_0..image_3] filtered non-null
+  id:          string;
+  product_id:  string;
+  name:        string;
+  images:      string[];   // [image_0..image_3] filtered non-null
+  partConfig?: StoredPartConfig[];
 }
 
 async function uploadVariantSnapshot(
@@ -248,13 +260,22 @@ export async function getVariants(
     .order("created_at", { ascending: true });
 
   if (error) throw new Error(error.message);
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    id:         row.id         as string,
-    product_id: row.product_id as string,
-    name:       row.name       as string,
-    images:     [row.image_0, row.image_1, row.image_2, row.image_3]
-                  .filter((url): url is string => typeof url === "string" && url !== ""),
-  }));
+  return (data ?? []).map((row: Record<string, unknown>) => {
+    let partConfig: StoredPartConfig[] | undefined;
+    try {
+      if (typeof row.part_config === "string" && row.part_config) {
+        partConfig = JSON.parse(row.part_config);
+      }
+    } catch { /* ignore malformed JSON */ }
+    return {
+      id:         row.id         as string,
+      product_id: row.product_id as string,
+      name:       row.name       as string,
+      images:     [row.image_0, row.image_1, row.image_2, row.image_3]
+                    .filter((url): url is string => typeof url === "string" && url !== ""),
+      partConfig,
+    };
+  });
 }
 
 /** Save a new variant — uploads up to 4 images to variants/ sub-path, inserts row */
@@ -263,7 +284,8 @@ export async function saveVariant(
   productId:  string,
   variantId:  string,
   name:       string,
-  images:     (string | null)[],   // up to 4 slots; null = slot was not generated
+  images:     (string | null)[],       // up to 4 slots; null = slot was not generated
+  partConfig?: StoredPartConfig[],     // optional: the part-row configuration to restore on next edit
 ): Promise<void> {
   const ANGLES = ["perspective", "front", "topdown", "topdown_front"] as const;
   const urls = await Promise.all(
@@ -275,6 +297,27 @@ export async function saveVariant(
     }),
   );
 
+  // For texture parts whose textureUrl is still a data URL, upload to storage
+  // so the config can be persisted without exceeding column size limits.
+  let storedConfig: StoredPartConfig[] | null = null;
+  if (partConfig && partConfig.length > 0) {
+    storedConfig = await Promise.all(
+      partConfig.map(async (p, idx) => {
+        if (p.mode === "texture" && p.textureUrl?.startsWith("data:")) {
+          try {
+            const storageUrl = await uploadVariantSnapshot(
+              merchantId, productId, variantId, `texture_${idx}`, p.textureUrl,
+            );
+            return { ...p, textureUrl: storageUrl };
+          } catch {
+            return { ...p, textureUrl: null }; // graceful: lose the texture ref rather than throw
+          }
+        }
+        return p;
+      }),
+    );
+  }
+
   const { error } = await supabase.from("product_variants").insert({
     id:          variantId,
     product_id:  productId,
@@ -284,6 +327,7 @@ export async function saveVariant(
     image_1:     urls[1] ?? null,
     image_2:     urls[2] ?? null,
     image_3:     urls[3] ?? null,
+    part_config: storedConfig ? JSON.stringify(storedConfig) : null,
   });
 
   if (error) throw new Error(error.message);

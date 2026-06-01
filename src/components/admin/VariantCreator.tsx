@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X, Upload } from "lucide-react";
 import { generateVariant, generateProductAltView, type VariantPart } from "@/lib/gemini";
-import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant } from "@/lib/db";
+import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant, type StoredPartConfig } from "@/lib/db";
 import type { Product } from "@/lib/products";
 
 interface Props {
@@ -397,7 +397,23 @@ export default function VariantCreator({ product, merchantId }: Props) {
     setLoadedVariantId(v.id);
     setLoadedVariantName(v.name);
     setApplyError(null);
-    // Scroll the top of the page so the user sees the preview immediately
+
+    // Restore part rows from stored config so the merchant doesn't need to
+    // re-enter colors / re-upload textures every time they open a saved variant.
+    if (v.partConfig && v.partConfig.length > 0) {
+      setPartRows(
+        v.partConfig.map((c) => ({
+          id:              c.id,
+          targetPart:      c.targetPart,
+          mode:            c.mode,
+          colorHex:        c.colorHex,
+          colorDesc:       c.colorDesc,
+          hexAutoResolved: c.hexAutoResolved,
+          textureUrl:      c.textureUrl ?? null,
+        })),
+      );
+    }
+
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -421,7 +437,17 @@ export default function VariantCreator({ product, merchantId }: Props) {
       if (loadedVariantId) {
         await deleteVariant(merchantId, product.id, loadedVariantId);
       }
-      await saveVariant(merchantId, product.id, id, variantName.trim(), previewImages);
+      // Serialise the current part rows so they can be restored when the variant is re-opened
+      const partConfig: StoredPartConfig[] = partRows.map((r) => ({
+        id:              r.id,
+        targetPart:      r.targetPart,
+        mode:            r.mode,
+        colorHex:        r.colorHex,
+        colorDesc:       r.colorDesc,
+        hexAutoResolved: r.hexAutoResolved,
+        textureUrl:      r.textureUrl ?? null,  // data URL or storage URL — saveVariant uploads data URLs
+      }));
+      await saveVariant(merchantId, product.id, id, variantName.trim(), previewImages, partConfig);
       const updated = await getVariants(merchantId, product.id);
       setSavedVariants(updated);
       // Reset after save
