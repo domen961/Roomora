@@ -83,9 +83,10 @@ export default function AdminPage() {
     getMerchantStats(activeMerchantId)
       .then((s) => { setBalance(s.balance); setTier(s.tier); })
       .catch(() => {});
-    supabase.from("merchants").select("shop_name").eq("id", activeMerchantId).single()
-      .then(({ data }) => { setShopName(data?.shop_name ?? null); })
-      .catch(() => {});
+    Promise.resolve(
+      supabase.from("merchants").select("shop_name").eq("id", activeMerchantId).single()
+    ).then(({ data }) => { setShopName(data?.shop_name ?? null); })
+     .catch(() => {});
   }, [activeMerchantId]);
 
   const reloadProducts = () =>
