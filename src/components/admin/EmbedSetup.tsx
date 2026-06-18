@@ -38,15 +38,15 @@ function CopyBlock({ label, value }: { label: string; value: string }) {
 }
 
 export default function EmbedSetup({ merchantId }: Props) {
-  const origin = typeof window !== "undefined" ? window.location.origin : "https://roomora.com";
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://furora.com";
 
   const scriptTag = `<script src="${origin}/embed.js" data-shop="${merchantId}"></script>`;
-  const buttonAttr = `<button data-roomora-product="YOUR_PRODUCT_ID">See in your room</button>`;
+  const buttonAttr = `<button data-furora-product="YOUR_PRODUCT_ID">See in your room</button>`;
 
   return (
     <div className="flex flex-col gap-8 max-w-2xl">
       <div>
-        <h2 className="text-xl text-foreground mb-1">Add Roomora to your website</h2>
+        <h2 className="text-xl text-foreground mb-1">Add Furora to your website</h2>
         <p className="text-sm text-muted-foreground">
           Two steps — paste once, then tag products. No developer needed.
         </p>
@@ -74,8 +74,8 @@ export default function EmbedSetup({ merchantId }: Props) {
       <div className="rounded-lg border border-border bg-card p-4 flex flex-col gap-1">
         <p className="text-xs font-medium">How it works</p>
         <p className="text-xs text-muted-foreground">
-          When a shopper clicks any element tagged with <code className="bg-secondary rounded px-1">data-roomora-product</code>,
-          a Roomora overlay opens. They take a photo of their room and see your product placed inside it — without leaving your page.
+          When a shopper clicks any element tagged with <code className="bg-secondary rounded px-1">data-furora-product</code>,
+          a Furora overlay opens. They take a photo of their room and see your product placed inside it — without leaving your page.
         </p>
       </div>
     </div>

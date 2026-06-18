@@ -23,7 +23,7 @@ export default function TryPage() {
     if (window.parent === window) return;
     const send = () =>
       window.parent.postMessage(
-        { type: "roomora:resize", height: document.documentElement.scrollHeight },
+        { type: "furora:resize", height: document.documentElement.scrollHeight },
         "*",
       );
     const ro = new ResizeObserver(send);
@@ -55,7 +55,7 @@ export default function TryPage() {
   const handleClose = () => {
     // Send close message to the embed parent page
     if (window.parent !== window) {
-      window.parent.postMessage("roomora:close", "*");
+      window.parent.postMessage("furora:close", "*");
     } else {
       window.history.back();
     }

@@ -210,7 +210,7 @@ export default function CapturePage() {
   // RESULT SCREEN
   // ─────────────────────────────────────────────────────────────────────────
   if (phase === "result" && resultImage) {
-    const filename = `roomora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
+    const filename = `furora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
     const handleShare = async () => {
       try {
         const res  = await fetch(resultImage);
@@ -250,7 +250,7 @@ export default function CapturePage() {
               onClick={() => {
                 const a = document.createElement("a");
                 a.href = resultImage;
-                a.download = `roomora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
+                a.download = `furora-${product?.name?.replace(/\s+/g, "-").toLowerCase() ?? "result"}.jpg`;
                 a.click();
               }}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">

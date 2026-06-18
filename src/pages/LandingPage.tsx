@@ -28,7 +28,7 @@ export default function LandingPage() {
             <span className="text-primary">in their own room.</span>
           </h1>
           <p className="text-lg text-muted-foreground max-w-xl leading-relaxed">
-            One script tag on your product page. Customers snap a photo of their room — Roomora places your furniture in it instantly, powered by AI.
+            One script tag on your product page. Customers snap a photo of their room — Furora places your furniture in it instantly, powered by AI.
           </p>
         </div>
 
@@ -87,7 +87,7 @@ export default function LandingPage() {
                 icon: <Upload className="h-6 w-6 text-primary" />,
                 step: "01",
                 title: "Upload your 3D model",
-                body: "Drop a GLB, GLTF, or OBJ file into your Roomora dashboard. We automatically generate product snapshots from multiple angles.",
+                body: "Drop a GLB, GLTF, or OBJ file into your Furora dashboard. We automatically generate product snapshots from multiple angles.",
               },
               {
                 icon: <Code className="h-6 w-6 text-primary" />,
@@ -128,7 +128,7 @@ export default function LandingPage() {
               </div>
               <pre className="px-4 py-4 text-xs text-muted-foreground font-mono overflow-x-auto leading-relaxed">
                 <span className="text-primary/70">&lt;script</span>
-                {` src="https://roomora.com/embed.js"\n`}
+                {` src="https://furora.com/embed.js"\n`}
                 {'        '}
                 <span className="text-primary/70">data-shop</span>
                 {`="YOUR_SHOP_ID"&gt;&lt;/script&gt;`}
@@ -141,7 +141,7 @@ export default function LandingPage() {
               <pre className="px-4 py-4 text-xs text-muted-foreground font-mono overflow-x-auto leading-relaxed">
                 <span className="text-primary/70">&lt;button</span>
                 {` `}
-                <span className="text-primary/70">data-roomora-product</span>
+                <span className="text-primary/70">data-furora-product</span>
                 {`="PRODUCT_ID"&gt;\n  See in your room\n`}
                 <span className="text-primary/70">&lt;/button&gt;</span>
               </pre>
@@ -257,7 +257,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border px-6 py-6 flex items-center justify-between">
         <Logo className="h-5 opacity-60" />
-        <span className="text-xs text-muted-foreground">© 2026 Roomora</span>
+        <span className="text-xs text-muted-foreground">© 2026 Furora</span>
       </footer>
 
     </div>

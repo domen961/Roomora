@@ -15,7 +15,7 @@ const isMobile =
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
 export default function ResultStep({ result, productName, onReset, onRegenerate }: Props) {
-  const filename = `roomora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
+  const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
 
   const handleDownload = () => {
     const a = document.createElement("a");
@@ -136,7 +136,7 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
         )}
 
         <p className="text-xs text-muted-foreground text-center">
-          Powered by <span className="font-medium text-foreground">Roomora</span> &amp; Gemini AI
+          Powered by <span className="font-medium text-foreground">Furora</span> &amp; Gemini AI
         </p>
       </main>
     </div>

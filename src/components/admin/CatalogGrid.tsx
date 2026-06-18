@@ -13,7 +13,7 @@ export default function CatalogGrid({ products, onDelete, onEdit }: Props) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const copyId = (id: string) => {
-    navigator.clipboard.writeText(`<button data-roomora-product="${id}">See in your room</button>`);
+    navigator.clipboard.writeText(`<button data-furora-product="${id}">See in your room</button>`);
     setCopiedId(id);
     setTimeout(() => setCopiedId(null), 2000);
   };
