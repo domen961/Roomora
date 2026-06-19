@@ -88,7 +88,7 @@
       el.dataset.furoraWired = "1";
 
       // Clean button: wand icon + action text only
-      el.innerHTML = WAND_SVG + '<span style="color:#1a1a1a;font-weight:600">See in your room</span>';
+      el.innerHTML = WAND_SVG + '<span style="color:#1a1a1a;font-weight:600">Place this furniture in your room</span>';
 
       el.addEventListener("click", function (e) {
         e.preventDefault();
