@@ -959,13 +959,20 @@ export async function placeInRoom(
   const erasePrompt =
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
-    `Task: Look for a ${eraseLabel} in this room. ` +
-    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall.\n\n` +
+    `Task: Look for a ${eraseLabel} in this room — including ALL of its sections if it is a corner, ` +
+    `sectional, or modular ${eraseLabel} (the main seating body AND any attached chaise lounge, ` +
+    `ottoman, or footstool module that physically connects to it, even if that module looks like a ` +
+    `separate piece of furniture). ` +
+    `If found, erase the ENTIRE ${eraseLabel} — every connected section, leaving nothing behind — ` +
+    `and fill the area naturally with the surrounding floor and wall.\n\n` +
     `STRICT RULES:\n` +
-    `- Erase ONLY items that are clearly a ${eraseLabel}. Do not erase any other furniture type.\n` +
-    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other object.\n` +
+    `- Erase ONLY items that are part of the ${eraseLabel}. Do not erase any other furniture type.\n` +
+    `- If the ${eraseLabel} is a corner/sectional/modular piece, erase ALL of its modules together. ` +
+    `Never leave behind a chaise, ottoman, or footstool section that belongs to the same ${eraseLabel} — ` +
+    `a half-erased sectional with one module still in the room is a failure.\n` +
+    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other unrelated object.\n` +
     `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
-    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} if you can see one.\n\n` +
+    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} (and its sections) if you can see one.\n\n` +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
