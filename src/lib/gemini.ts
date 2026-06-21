@@ -1061,7 +1061,11 @@ export async function placeInRoom(
         `use ${numAltViews > 1 ? "these" : "it"} as the primary perspective reference when compositing from the room's camera angle.\n`
       : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
+    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must be reproduced EXACTLY as shown in the REFERENCE — identical shape, configuration, colour, material, texture, surface finish, and proportions. ` +
+    `Copy the reference's silhouette and layout precisely: if the reference shows a straight/linear piece with no corner, chaise, or sectional module, the output must ALSO be straight with no corner, chaise, or sectional module — ` +
+    `do NOT extend it into an L-shape or add a corner/chaise section just because the room's open floor space could fit one. ` +
+    `Conversely, if the reference IS a corner/sectional/chaise piece, preserve that exact configuration too. ` +
+    `Do not redesign, restyle, resize the silhouette, or substitute the product in any way — match the reference's number of seats, arm style, and module layout exactly.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
     `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
     `Compositing steps:\n` +
