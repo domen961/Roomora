@@ -1067,7 +1067,10 @@ export async function placeInRoom(
     `Conversely, if the reference IS a corner/sectional/chaise piece, preserve that exact configuration too. ` +
     `Do not redesign, restyle, resize the silhouette, or substitute the product in any way — match the reference's number of seats, arm style, and module layout exactly.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
-    `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
+    `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. ` +
+    (eraseWasApplied
+      ? `The ${eraseLabel} has already been removed from this image — the floor area where it stood is now empty. Do NOT infer the new ${productLabel.toLowerCase()}'s shape, length, or footprint from that empty area; its shape comes ONLY from the REFERENCE photos. Keep every OTHER object (other furniture, rugs, decor) exactly where it appears here.\n\n`
+      : `Ignore any furniture visible in this image.\n\n`) +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
@@ -1083,11 +1086,18 @@ export async function placeInRoom(
     `6. Blend edges naturally — no hard cuts, bright halos, or visible compositing seams.\n\n` +
     `Output only the composited image. No text.`;
 
+  // FRAMING MASTER: use the ERASED canvas (not the original room) when erase was
+  // applied — otherwise the original sofa still visible in that slot leaks its
+  // silhouette and Gemini copies its shape (e.g. reshaping a straight sofa into the
+  // L-shape of the sofa being replaced). The erased canvas keeps all OTHER furniture
+  // and full room geometry, so framing/anti-zoom is preserved without the shape leak.
+  const framingMaster = eraseWasApplied ? canvasDataUrl : roomResized;
+
   const parts: unknown[] = [
     { text: placePrompt },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },           // BACKGROUND (erased)
     ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // PRODUCT REFERENCE
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },             // FRAMING MASTER (original)
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(framingMaster) } },           // FRAMING MASTER (erased when swap applied)
   ];
 
   const raw = await callGemini(parts);
