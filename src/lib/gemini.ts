@@ -974,6 +974,7 @@ export async function placeInRoom(
     `Leaving one module (e.g. a chaise or corner piece, especially one with a blanket on it) still in the room is a FAILURE.\n` +
     `- Erase ONLY the ${eraseLabel} and what's draped on it. Do not erase any other furniture type.\n` +
     `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs on the floor, plants, curtains, lamps, artwork, decorations, or any other object NOT part of or resting on the ${eraseLabel}.\n` +
+    `- EXCEPTION to the line above: a low padded module sitting directly beside the ${eraseLabel} and piled with blankets or pillows can look like a bed or daybed — but if it lines up with the ${eraseLabel} to form an L, corner, or chaise, it IS a section of the ${eraseLabel}. Erase it. Do NOT preserve it as a "bed" or "decoration".\n` +
     `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
     `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} (and all its sections) if you can see one.\n\n` +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
@@ -1029,6 +1030,37 @@ export async function placeInRoom(
     // Crop erase output back to the original aspect ratio so any erase-step
     // framing drift doesn't compound into the place step
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
+
+    // ── SECOND ERASE PASS (sofas/beds only) ──────────────────────────────────
+    // Large multi-module furniture (corner/sectional sofas, especially a chaise
+    // piled with blankets that reads as a "bed") often survives the first pass.
+    // A second pass operates on the now-simpler scene — the main body is already
+    // gone, so the leftover module is isolated and far easier to target.
+    if (eraseLabel === "sofa" || eraseLabel === "bed") {
+      const cleanupPrompt =
+        `You are a photo editor. You will receive one image: a room photo.\n\n` +
+        `A ${eraseLabel} was just removed from this room, but a leftover SECTION of it may still be present — ` +
+        `typically a chaise lounge, corner module, or ottoman, and it is often piled with blankets, throws, or pillows ` +
+        `(which can make it look like a bed or a heap of fabric). \n\n` +
+        `Task: If you see ANY such leftover ${eraseLabel} section — a padded seating module, especially one draped/piled ` +
+        `with blankets or pillows, sitting on the floor — erase it COMPLETELY (the module AND everything draped on it) ` +
+        `and fill the area naturally with the surrounding floor and wall.\n\n` +
+        `RULES:\n` +
+        `- A low padded module piled with blankets/pillows is a leftover ${eraseLabel} section, NOT a bed — erase it.\n` +
+        `- Do NOT remove real ${eraseLabel === "sofa" ? "tables, chairs, beds" : "tables, chairs, sofas"}, rugs, plants, curtains, lamps, artwork, TV stands, or shelving.\n` +
+        `- If the room is ALREADY clear of any ${eraseLabel} section, return the photo pixel-for-pixel UNCHANGED.\n` +
+        `- Keep the EXACT same framing and zoom. Do not pan, zoom, or recompose.\n\n` +
+        `Output only the edited photo. No text.`;
+      try {
+        const second = await callGemini([
+          { text: cleanupPrompt },
+          { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
+        ]);
+        canvasDataUrl = await cropToRatio(second, origW, origH);
+      } catch (err) {
+        console.warn("placeInRoom: second erase pass failed, keeping first-pass result:", err);
+      }
+    }
   }
 
   const roomNote  = buildRoomNote(measurement);

@@ -106,6 +106,13 @@ Confidence: high=door/window clearly visible, medium=multiple reference objects,
     const cleaned = text.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
     const parsed  = JSON.parse(cleaned);
 
+    // Log the detection so placement issues (e.g. furniture not erased) are debuggable
+    console.log("claude-measure result:", JSON.stringify({
+      detected_furniture: parsed?.detected_furniture,
+      confidence:         parsed?.confidence,
+      camera_tilt_deg:    parsed?.camera_tilt_deg,
+    }));
+
     return res.json(parsed);
   } catch (err) {
     console.error("claude-measure error:", err);
