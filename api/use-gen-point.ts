@@ -47,7 +47,7 @@ export default async function handler(req: any, res: any) {
       console.error("use-gen-point: select failed", selectRes.status);
       return res.json({ ok: true, balance: -1, tier: "unknown" }); // fail open
     }
-    const rows = await selectRes.json();
+    const rows = (await selectRes.json()) as Array<{ gen_points_balance: number; subscription_tier: string }>;
     if (!rows?.length) return res.json({ ok: true, balance: -1, tier: "unknown" }); // merchant not found = fail open
 
     const { gen_points_balance: balance, subscription_tier: tier } = rows[0];
