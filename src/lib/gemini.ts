@@ -960,23 +960,20 @@ export async function placeInRoom(
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
     `Task: Find the ${eraseLabel} in this room and erase ALL of it, then fill the area naturally with the surrounding floor and wall.\n\n` +
-    `WHAT COUNTS AS THE ${eraseLabel.toUpperCase()} (erase every part of this):\n` +
-    `- The main seating body.\n` +
-    `- EVERY connected section if it is a corner, sectional, or modular ${eraseLabel}: any chaise lounge, ` +
-    `corner module, ottoman, or footstool that sits adjacent to and in line with the main body, forming an ` +
-    `L or U shape — these belong to the SAME ${eraseLabel} even if they are a different height, in shadow, ` +
-    `a different shade, or look like a separate piece of furniture.\n` +
-    `- Any blanket, throw, pillow, or cushion lying ON or draped OVER the ${eraseLabel} or any of its sections — ` +
-    `erase these TOGETHER with the ${eraseLabel}. A blanket-covered section is still part of the ${eraseLabel}; ` +
-    `do not preserve the blanket or the module underneath it.\n\n` +
+    `WHAT TO ERASE — the ${eraseLabel} and only the ${eraseLabel}:\n` +
+    `- Its main body.\n` +
+    (eraseLabel === "sofa"
+      ? `- If it is a corner, sectional, or modular sofa, erase EVERY connected upholstered seating section too: the chaise lounge, corner module, ottoman, and footstool that are part of the same cushioned seating unit — even if a section is a different height, in shadow, or partly covered by a blanket. The whole sofa goes, leaving no seating module behind.\n` +
+      `- Any blanket, throw, or cushion lying on the sofa goes with it.\n`
+      : `- If it is a multi-part ${eraseLabel}, erase all of its connected sections.\n`) +
+    `\nWHAT TO KEEP — do NOT touch any of these, leave them EXACTLY as-is:\n` +
+    `- Every other furniture type: ${otherTypes}. A ${eraseLabel === "sofa" ? "coffee table, side table, or any table" : "sofa, table, or other furniture"} sitting next to, in front of, or even partly overlapping the ${eraseLabel} is NOT part of it — keep it fully intact.\n` +
+    `- Rugs, plants, curtains, lamps, artwork, TV stands, shelving, decorations, and any non-${eraseLabel} object.\n` +
+    `- Only upholstered SEATING that is clearly part of the ${eraseLabel} should be erased. Hard furniture like tables and stands is never part of a ${eraseLabel}.\n\n` +
     `STRICT RULES:\n` +
-    `- Erase the COMPLETE ${eraseLabel} — every connected section plus anything draped on it — leaving nothing behind. ` +
-    `Leaving one module (e.g. a chaise or corner piece, especially one with a blanket on it) still in the room is a FAILURE.\n` +
-    `- Erase ONLY the ${eraseLabel} and what's draped on it. Do not erase any other furniture type.\n` +
-    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs on the floor, plants, curtains, lamps, artwork, decorations, or any other object NOT part of or resting on the ${eraseLabel}.\n` +
-    `- EXCEPTION to the line above: a low padded module sitting directly beside the ${eraseLabel} and piled with blankets or pillows can look like a bed or daybed — but if it lines up with the ${eraseLabel} to form an L, corner, or chaise, it IS a section of the ${eraseLabel}. Erase it. Do NOT preserve it as a "bed" or "decoration".\n` +
-    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
-    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} (and all its sections) if you can see one.\n\n` +
+    `- Erase ONLY the ${eraseLabel}. Do not remove or alter any other object, even one touching the ${eraseLabel}.\n` +
+    `- Do not "clear the area" or remove nearby items to make space — erase the ${eraseLabel} only.\n` +
+    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged.\n\n` +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
@@ -1030,37 +1027,6 @@ export async function placeInRoom(
     // Crop erase output back to the original aspect ratio so any erase-step
     // framing drift doesn't compound into the place step
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
-
-    // ── SECOND ERASE PASS (sofas/beds only) ──────────────────────────────────
-    // Large multi-module furniture (corner/sectional sofas, especially a chaise
-    // piled with blankets that reads as a "bed") often survives the first pass.
-    // A second pass operates on the now-simpler scene — the main body is already
-    // gone, so the leftover module is isolated and far easier to target.
-    if (eraseLabel === "sofa" || eraseLabel === "bed") {
-      const cleanupPrompt =
-        `You are a photo editor. You will receive one image: a room photo.\n\n` +
-        `A ${eraseLabel} was just removed from this room, but a leftover SECTION of it may still be present — ` +
-        `typically a chaise lounge, corner module, or ottoman, and it is often piled with blankets, throws, or pillows ` +
-        `(which can make it look like a bed or a heap of fabric). \n\n` +
-        `Task: If you see ANY such leftover ${eraseLabel} section — a padded seating module, especially one draped/piled ` +
-        `with blankets or pillows, sitting on the floor — erase it COMPLETELY (the module AND everything draped on it) ` +
-        `and fill the area naturally with the surrounding floor and wall.\n\n` +
-        `RULES:\n` +
-        `- A low padded module piled with blankets/pillows is a leftover ${eraseLabel} section, NOT a bed — erase it.\n` +
-        `- Do NOT remove real ${eraseLabel === "sofa" ? "tables, chairs, beds" : "tables, chairs, sofas"}, rugs, plants, curtains, lamps, artwork, TV stands, or shelving.\n` +
-        `- If the room is ALREADY clear of any ${eraseLabel} section, return the photo pixel-for-pixel UNCHANGED.\n` +
-        `- Keep the EXACT same framing and zoom. Do not pan, zoom, or recompose.\n\n` +
-        `Output only the edited photo. No text.`;
-      try {
-        const second = await callGemini([
-          { text: cleanupPrompt },
-          { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },
-        ]);
-        canvasDataUrl = await cropToRatio(second, origW, origH);
-      } catch (err) {
-        console.warn("placeInRoom: second erase pass failed, keeping first-pass result:", err);
-      }
-    }
   }
 
   const roomNote  = buildRoomNote(measurement);
@@ -1109,10 +1075,7 @@ export async function placeInRoom(
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
-    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
-    (eraseWasApplied
-      ? `2b. SAFETY CHECK: The previous ${eraseLabel} was removed from the BACKGROUND, but if you notice ANY leftover remnant of it — a stray chaise/corner/ottoman module, an arm, or a section under a draped blanket — paint that remnant out as empty floor and wall before compositing. The ONLY ${eraseLabel} in your final image must be the new ${productLabel.toLowerCase()} you place. Two sofas in the result is a failure.\n`
-      : ``) +
+    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} CRITICAL: Keep every OTHER object in the BACKGROUND exactly as-is — tables, chairs, rugs, plants, lamps, artwork, TV stands, shelving and any other furniture must stay in place untouched. Only the ${productLabel.toLowerCase()} is being added; do not remove, move, or alter anything else, and do not erase any furniture to make space.\n` +
     `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
     `5. Lighting — study the room carefully before rendering:\n` +
