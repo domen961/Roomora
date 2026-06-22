@@ -974,7 +974,12 @@ export async function placeInRoom(
       { text: erasePrompt },
       { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
     ]),
-    measureRoom(roomResized),
+    // ── DIAGNOSTIC: claude-measure disabled ──────────────────────────────────
+    // Temporarily bypassed to isolate whether the room-measurement layer
+    // (detection gating + scale/perspective notes + camera-tilt warp) is what
+    // degrades placement. To re-enable, restore `measureRoom(roomResized)`.
+    Promise.resolve(null),
+    // measureRoom(roomResized),
   ]);
 
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
