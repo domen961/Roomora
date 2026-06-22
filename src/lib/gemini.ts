@@ -959,21 +959,13 @@ export async function placeInRoom(
   const erasePrompt =
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
-    `Task: Find the ${eraseLabel} in this room and erase ALL of it, then fill the area naturally with the surrounding floor and wall.\n\n` +
-    `WHAT TO ERASE — the ${eraseLabel} and only the ${eraseLabel}:\n` +
-    `- Its main body.\n` +
-    (eraseLabel === "sofa"
-      ? `- If it is a corner, sectional, or modular sofa, erase EVERY connected upholstered seating section too: the chaise lounge, corner module, ottoman, and footstool that are part of the same cushioned seating unit — even if a section is a different height, in shadow, or partly covered by a blanket. The whole sofa goes, leaving no seating module behind.\n` +
-      `- Any blanket, throw, or cushion lying on the sofa goes with it.\n`
-      : `- If it is a multi-part ${eraseLabel}, erase all of its connected sections.\n`) +
-    `\nWHAT TO KEEP — do NOT touch any of these, leave them EXACTLY as-is:\n` +
-    `- Every other furniture type: ${otherTypes}. A ${eraseLabel === "sofa" ? "coffee table, side table, or any table" : "sofa, table, or other furniture"} sitting next to, in front of, or even partly overlapping the ${eraseLabel} is NOT part of it — keep it fully intact.\n` +
-    `- Rugs, plants, curtains, lamps, artwork, TV stands, shelving, decorations, and any non-${eraseLabel} object.\n` +
-    `- Only upholstered SEATING that is clearly part of the ${eraseLabel} should be erased. Hard furniture like tables and stands is never part of a ${eraseLabel}.\n\n` +
+    `Task: Look for a ${eraseLabel} in this room. ` +
+    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall.\n\n` +
     `STRICT RULES:\n` +
-    `- Erase ONLY the ${eraseLabel}. Do not remove or alter any other object, even one touching the ${eraseLabel}.\n` +
-    `- Do not "clear the area" or remove nearby items to make space — erase the ${eraseLabel} only.\n` +
-    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged.\n\n` +
+    `- Erase ONLY items that are clearly a ${eraseLabel}. Do not erase any other furniture type.\n` +
+    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other object.\n` +
+    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
+    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} if you can see one.\n\n` +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
@@ -1062,20 +1054,13 @@ export async function placeInRoom(
         `use ${numAltViews > 1 ? "these" : "it"} as the primary perspective reference when compositing from the room's camera angle.\n`
       : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must be reproduced EXACTLY as shown in the REFERENCE — identical shape, configuration, colour, material, texture, surface finish, and proportions. ` +
-    `Copy the reference's silhouette and layout precisely: if the reference shows a straight/linear piece with no corner, chaise, or sectional module, the output must ALSO be straight with no corner, chaise, or sectional module — ` +
-    `do NOT extend it into an L-shape or add a corner/chaise section just because the room's open floor space could fit one. ` +
-    `Conversely, if the reference IS a corner/sectional/chaise piece, preserve that exact configuration too. ` +
-    `Do not redesign, restyle, resize the silhouette, or substitute the product in any way — match the reference's number of seats, arm style, and module layout exactly.\n` +
+    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
-    `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. ` +
-    (eraseWasApplied
-      ? `The ${eraseLabel} has already been removed from this image — the floor area where it stood is now empty. Do NOT infer the new ${productLabel.toLowerCase()}'s shape, length, or footprint from that empty area; its shape comes ONLY from the REFERENCE photos. Keep every OTHER object (other furniture, rugs, decor) exactly where it appears here.\n\n`
-      : `Ignore any furniture visible in this image.\n\n`) +
+    `FRAMING MASTER (${framingSlot}): The same room from the same camera angle — used as a pixel-level framing template only. Your output must reproduce the framing of this image exactly: ceiling line, wall edges, artworks, windows, and floor boundaries must appear at the identical positions. Ignore any furniture visible in this image.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
-    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} CRITICAL: Keep every OTHER object in the BACKGROUND exactly as-is — tables, chairs, rugs, plants, lamps, artwork, TV stands, shelving and any other furniture must stay in place untouched. Only the ${productLabel.toLowerCase()} is being added; do not remove, move, or alter anything else, and do not erase any furniture to make space.\n` +
+    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
     `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
     `5. Lighting — study the room carefully before rendering:\n` +
@@ -1087,18 +1072,11 @@ export async function placeInRoom(
     `6. Blend edges naturally — no hard cuts, bright halos, or visible compositing seams.\n\n` +
     `Output only the composited image. No text.`;
 
-  // FRAMING MASTER: use the ERASED canvas (not the original room) when erase was
-  // applied — otherwise the original sofa still visible in that slot leaks its
-  // silhouette and Gemini copies its shape (e.g. reshaping a straight sofa into the
-  // L-shape of the sofa being replaced). The erased canvas keeps all OTHER furniture
-  // and full room geometry, so framing/anti-zoom is preserved without the shape leak.
-  const framingMaster = eraseWasApplied ? canvasDataUrl : roomResized;
-
   const parts: unknown[] = [
     { text: placePrompt },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },           // BACKGROUND (erased)
     ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // PRODUCT REFERENCE
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(framingMaster) } },           // FRAMING MASTER (erased when swap applied)
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },             // FRAMING MASTER (original)
   ];
 
   const raw = await callGemini(parts);
