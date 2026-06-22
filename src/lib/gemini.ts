@@ -969,17 +969,20 @@ export async function placeInRoom(
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
+  // ── DIAGNOSTIC TOGGLE: claude-measure ────────────────────────────────────────
+  // Set to false to isolate whether the room-measurement layer (detection gating
+  // + scale/perspective notes + camera-tilt warp) is what degrades placement.
+  // Flip back to true to re-enable.
+  const USE_CLAUDE_MEASURE = false;
+
   const [eraseResult, measureResult] = await Promise.allSettled([
     callGemini([
       { text: erasePrompt },
       { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
     ]),
-    // ── DIAGNOSTIC: claude-measure disabled ──────────────────────────────────
-    // Temporarily bypassed to isolate whether the room-measurement layer
-    // (detection gating + scale/perspective notes + camera-tilt warp) is what
-    // degrades placement. To re-enable, restore `measureRoom(roomResized)`.
-    Promise.resolve(null),
-    // measureRoom(roomResized),
+    USE_CLAUDE_MEASURE
+      ? measureRoom(roomResized)
+      : Promise.resolve<RoomMeasurement | null>(null),
   ]);
 
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
