@@ -969,11 +969,10 @@ export async function placeInRoom(
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
-  // ── DIAGNOSTIC TOGGLE: claude-measure ────────────────────────────────────────
-  // Set to false to isolate whether the room-measurement layer (detection gating
-  // + scale/perspective notes + camera-tilt warp) is what degrades placement.
-  // Flip back to true to re-enable.
-  const USE_CLAUDE_MEASURE = false;
+  // Room-measurement layer (detection gating + scale/perspective notes + camera-tilt
+  // warp). A diagnostic with this disabled confirmed it is NOT the cause of furniture
+  // loss, and that it is in fact needed for the sofa swap to occur at all.
+  const USE_CLAUDE_MEASURE = true;
 
   const [eraseResult, measureResult] = await Promise.allSettled([
     callGemini([
