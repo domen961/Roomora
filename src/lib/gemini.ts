@@ -84,6 +84,32 @@ async function cropToRatio(src: string, targetW: number, targetH: number): Promi
   }
 }
 
+/**
+ * Returns a 0–255 mean-absolute-difference between two images (downscaled to 64×64).
+ * Used to detect a placement "no-op" — when Gemini returns the room essentially
+ * unchanged (old furniture still in place, no swap). A genuine swap changes the
+ * furniture region enough to push this well above the no-op noise floor.
+ */
+async function imageMeanDiff(a: string, b: string): Promise<number> {
+  try {
+    const [ia, ib] = await Promise.all([loadImage(a), loadImage(b)]);
+    const W = 64, H = 64;
+    const ca = document.createElement("canvas"); ca.width = W; ca.height = H;
+    const cb = document.createElement("canvas"); cb.width = W; cb.height = H;
+    ca.getContext("2d")!.drawImage(ia, 0, 0, W, H);
+    cb.getContext("2d")!.drawImage(ib, 0, 0, W, H);
+    const da = ca.getContext("2d")!.getImageData(0, 0, W, H).data;
+    const db = cb.getContext("2d")!.getImageData(0, 0, W, H).data;
+    let sum = 0;
+    for (let i = 0; i < da.length; i += 4) {
+      sum += Math.abs(da[i] - db[i]) + Math.abs(da[i + 1] - db[i + 1]) + Math.abs(da[i + 2] - db[i + 2]);
+    }
+    return sum / (W * H * 3);
+  } catch {
+    return 255; // on error, assume "different" so we never block a result
+  }
+}
+
 async function resizeImage(src: string, maxW: number, maxH: number, quality = 0.8, background?: string): Promise<string> {
   try {
     const img = await loadImage(src);
@@ -1064,11 +1090,12 @@ export async function placeInRoom(
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
     `FRAMING MASTER (${framingSlot}): The original room from the same camera angle, BEFORE the old ${eraseLabel} was removed. Use it for two things: (a) a pixel-level framing template — ceiling line, wall edges, artworks, windows and floor boundaries must appear at the identical positions; and (b) the source of truth for EVERY OTHER object in the room (coffee tables, side tables, chairs, lamps, plants, rugs, decor) — all of those must remain in your output exactly as shown here. The ONLY object from this image that should NOT appear is the old ${eraseLabel}, which is being replaced.\n\n` +
+    `PRIMARY GOAL — DO NOT SKIP: Your output MUST show the new ${productLabel.toLowerCase()} standing in the room, and the old ${eraseLabel} MUST be gone. Returning the room unchanged, or leaving the old ${eraseLabel} in place, is a FAILURE. The single most important thing is that the swap visibly happened.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
-    `1. Compare BACKGROUND with FRAMING MASTER — they show the same room. Use FRAMING MASTER as your ruler: every structural element (ceiling, walls, artworks, floor edges) must be at the same position in your output. Do not zoom in.\n` +
-    `1b. PRESERVE EVERY OTHER OBJECT: Look at all furniture and decor in the FRAMING MASTER that is NOT the old ${eraseLabel} — coffee tables, side tables, chairs, lamps, plants, rugs, decorations. Each one MUST appear in your output at its exact original position, size and appearance. If the BACKGROUND is missing any of them (the ${eraseLabel}-removal step sometimes erases a nearby table or small object by mistake), RESTORE it exactly as it looks in the FRAMING MASTER. The only thing being removed from the room is the old ${eraseLabel}; never delete a table or any other object. Do NOT bring back the old ${eraseLabel} itself.\n` +
-    `2. Place the ${productLabel.toLowerCase()} on the floor at a natural position.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} Do not displace or remove any existing furniture to fit the new product — work around what is already there.\n` +
+    `1. Place the new ${productLabel.toLowerCase()} on the floor where the old ${eraseLabel} stood.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} The old ${eraseLabel} must NOT remain — only the new ${productLabel.toLowerCase()} occupies that spot.\n` +
+    `2. Keep the framing identical to the FRAMING MASTER: ceiling, walls, artworks, windows and floor boundaries at the same positions. Do not zoom or recompose.\n` +
+    `2b. Preserve every OTHER object exactly as it appears in the FRAMING MASTER — coffee tables, side tables, chairs, lamps, plants, rugs, decor. If the BACKGROUND is missing one (the ${eraseLabel}-removal step sometimes deletes a nearby table by mistake), restore just that object from the FRAMING MASTER. Never delete a table or other object — but do NOT bring back the old ${eraseLabel}.\n` +
     `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
     `5. Lighting — study the room carefully before rendering:\n` +
@@ -1087,6 +1114,25 @@ export async function placeInRoom(
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },             // FRAMING MASTER (original)
   ];
 
-  const raw = await callGemini(parts);
+  // ── Place call with retry-on-no-op ──────────────────────────────────────────
+  // Gemini is non-deterministic and sometimes returns the room essentially
+  // unchanged (old furniture still present, no swap). Detect that by comparing the
+  // result against the ORIGINAL room: a genuine swap changes the furniture region
+  // well above the re-encode noise floor; a no-op stays near-identical. Retry a few
+  // times so the user reliably gets a real swap instead of having to click regenerate.
+  // Only applied when an erase was actually expected (a sofa/furniture was present);
+  // for empty rooms the result legitimately differs from the input, so no gating needed.
+  const NOOP_DIFF_THRESHOLD = 7;   // mean 0–255 diff below this ≈ unchanged room
+  const MAX_PLACE_ATTEMPTS  = 4;
+
+  let raw = await callGemini(parts);
+  if (eraseWasApplied) {
+    for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
+      const diff = await imageMeanDiff(raw, roomResized);
+      if (diff >= NOOP_DIFF_THRESHOLD) break;  // swap visibly happened
+      console.warn(`placeInRoom: result looks unchanged (diff ${diff.toFixed(1)} < ${NOOP_DIFF_THRESHOLD}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
+      raw = await callGemini(parts);
+    }
+  }
   return cropToRatio(raw, origW, origH);
 }
