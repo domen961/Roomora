@@ -86,8 +86,8 @@ export default function LandingPage() {
               {
                 icon: <Upload className="h-6 w-6 text-primary" />,
                 step: "01",
-                title: "Upload your 3D model",
-                body: "Drop a GLB, GLTF, or OBJ file into your Furora dashboard. We automatically generate product snapshots from multiple angles.",
+                title: "Add your products",
+                body: "Paste a product page URL and Furora pulls in the photos and details automatically — or drop product photos straight in. No 3D models, no developer.",
               },
               {
                 icon: <Code className="h-6 w-6 text-primary" />,
