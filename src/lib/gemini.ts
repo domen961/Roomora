@@ -12,7 +12,16 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
+    img.onload = () => {
+      // Force a full decode before resolving. Without this, the FIRST time a
+      // freshly-loaded image is drawn to a canvas the bitmap can still be
+      // undecoded, yielding blank/partial pixel data — which made the very first
+      // generation of a session silently fail (erase no-op → "nothing changed"),
+      // while every later run worked because the image was decoded & cached.
+      // decode() may reject for some valid images, so resolve regardless.
+      if (img.decode) img.decode().then(() => resolve(img), () => resolve(img));
+      else resolve(img);
+    };
     img.onerror = reject;
     img.src = src;
   });
