@@ -185,12 +185,12 @@ export default function LandingPage() {
                 cta:      { label: "Coming soon", href: null, disabled: true },
               },
               {
-                name:     "Unlimited",
-                price:    "€480",
-                points:   "Unlimited AR try-ons",
+                name:     "Custom",
+                price:    "Let's talk",
+                points:   "Tailored to your traffic",
                 popular:  false,
-                features: ["Unlimited Gen Points", "Variant creator", "Embed on any website", "Dedicated support"],
-                cta:      { label: "Coming soon", href: null, disabled: true },
+                features: ["Volume-based pricing", "High monthly limits", "Variant creator", "Dedicated support"],
+                cta:      { label: "Contact us", href: "mailto:dominik.mason96@gmail.com?subject=Furora%20Custom%20Plan", disabled: false },
               },
             ].map((plan) => (
               <div
@@ -207,7 +207,7 @@ export default function LandingPage() {
 
                 <div className="flex flex-col gap-1">
                   <p className="text-xs text-muted-foreground uppercase tracking-widest">{plan.name}</p>
-                  <p className="text-3xl font-light text-foreground">{plan.price}<span className="text-base text-muted-foreground">{plan.price !== "€0" ? " /mo" : ""}</span></p>
+                  <p className="text-3xl font-light text-foreground">{plan.price}<span className="text-base text-muted-foreground">{plan.price.startsWith("€") && plan.price !== "€0" ? " /mo" : ""}</span></p>
                   <p className="text-xs text-primary">{plan.points}</p>
                 </div>
 
@@ -224,6 +224,13 @@ export default function LandingPage() {
                   <button disabled className="w-full rounded-md border border-border py-2.5 text-xs text-muted-foreground cursor-not-allowed opacity-50">
                     {plan.cta.label}
                   </button>
+                ) : plan.cta.href!.startsWith("mailto:") || plan.cta.href!.startsWith("http") ? (
+                  <a
+                    href={plan.cta.href!}
+                    className="w-full rounded-md bg-primary text-primary-foreground py-2.5 text-xs font-medium text-center hover:bg-primary/90 transition-colors"
+                  >
+                    {plan.cta.label}
+                  </a>
                 ) : (
                   <Link
                     to={plan.cta.href!}

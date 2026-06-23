@@ -474,23 +474,34 @@ const TIER_DEFAULTS: Record<string, number> = {
   free:  25,
   tier1: 300,
   tier2: 1000,
-  tier3: 999999, // effectively unlimited — checked by tier name, not balance
+  tier3: 0, // "Custom" — negotiated allocation, set manually via Grant points (not auto-granted)
 };
 
-/** Change a merchant's subscription tier and reset their balance — superadmin action */
+/**
+ * Change a merchant's subscription tier — superadmin action.
+ * For free/tier1/tier2 the balance is reset to that tier's monthly allocation.
+ * For tier3 ("Custom") the balance is left untouched — you negotiate the amount and
+ * set it separately with "Grant points", so changing the tier never wipes it.
+ */
 export async function setMerchantTier(merchantId: string, tier: string): Promise<void> {
-  const newBalance = TIER_DEFAULTS[tier] ?? 25;
+  const isCustom = tier === "tier3";
+  const update: Record<string, unknown> = { subscription_tier: tier };
+  if (!isCustom) update.gen_points_balance = TIER_DEFAULTS[tier] ?? 25;
+
   const { error: updateErr } = await supabase
     .from("merchants")
-    .update({ subscription_tier: tier, gen_points_balance: newBalance })
+    .update(update)
     .eq("id", merchantId);
   if (updateErr) throw new Error(updateErr.message);
 
-  const { error: txErr } = await supabase.from("gen_point_transactions").insert({
-    merchant_id: merchantId,
-    amount:      newBalance,
-    type:        "subscription_credit",
-    note:        `Tier changed to ${tier}`,
-  });
-  if (txErr) throw new Error(txErr.message);
+  // Only log a credit transaction when we actually changed the balance.
+  if (!isCustom) {
+    const { error: txErr } = await supabase.from("gen_point_transactions").insert({
+      merchant_id: merchantId,
+      amount:      TIER_DEFAULTS[tier] ?? 25,
+      type:        "subscription_credit",
+      note:        `Tier changed to ${tier}`,
+    });
+    if (txErr) throw new Error(txErr.message);
+  }
 }

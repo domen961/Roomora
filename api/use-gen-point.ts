@@ -9,7 +9,7 @@ export const config = {
  * → { ok: boolean, balance: number, tier: string, error?: string }
  *
  * Atomically checks and deducts 1 Gen Point from the merchant's balance.
- * - Tier 3 ("Unlimited"): no deduction, always returns ok: true
+ * - All tiers deduct against their balance (no unlimited tier; tier3 "Custom" is a
  * - Balance = 0: returns ok: false
  * - Server error: fails open (returns ok: true) so users are never blocked by quota infra issues
  *
@@ -52,17 +52,15 @@ export default async function handler(req: any, res: any) {
 
     const { gen_points_balance: balance, subscription_tier: tier } = rows[0];
 
-    // 2. Tier 3 = unlimited, skip deduction
-    if (tier === "tier3") {
-      return res.json({ ok: true, balance: -1, tier });
-    }
+    // All tiers (incl. tier3 "Custom") deduct against their balance. Custom merchants
+    // get a negotiated allocation set manually by an admin; there is no unlimited tier.
 
-    // 3. Quota exhausted
+    // 2. Quota exhausted
     if (balance <= 0) {
       return res.json({ ok: false, balance: 0, tier, error: "Quota exhausted" });
     }
 
-    // 4. Deduct 1 point
+    // 3. Deduct 1 point
     const updateRes = await fetch(
       `${supabaseUrl}/rest/v1/merchants?id=eq.${encodeURIComponent(merchantId)}`,
       {

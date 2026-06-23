@@ -14,7 +14,7 @@ const TIER_LABELS: Record<string, string> = {
   free:  "Free — 25 Gen Points",
   tier1: "Starter — 300 Gen Points / month",
   tier2: "Pro — 1,000 Gen Points / month",
-  tier3: "Unlimited",
+  tier3: "Custom — negotiated allocation",
 };
 
 type Msg = { text: string; ok: boolean };
@@ -265,12 +265,8 @@ export default function AccountTab({ user, merchantId }: Props) {
                 <p className="text-sm text-foreground font-medium">
                   {TIER_LABELS[stats.tier] ?? stats.tier}
                 </p>
-                <span className={`text-xs rounded-full px-2.5 py-0.5 font-medium border ${
-                  stats.tier === "tier3"
-                    ? "border-primary/30 bg-primary/10 text-primary"
-                    : "border-border text-muted-foreground"
-                }`}>
-                  {stats.tier === "tier3" ? "Unlimited" : `${stats.balance} remaining`}
+                <span className="text-xs rounded-full px-2.5 py-0.5 font-medium border border-border text-muted-foreground">
+                  {stats.balance} remaining
                 </span>
               </div>
               <div className="flex gap-4 text-xs text-muted-foreground">

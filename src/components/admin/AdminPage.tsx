@@ -24,7 +24,7 @@ const TIER_LABELS: Record<string, string> = {
   free:  "Free",
   tier1: "Tier 1",
   tier2: "Tier 2",
-  tier3: "Unlimited",
+  tier3: "Custom",
 };
 const TIER_OPTIONS = ["free", "tier1", "tier2", "tier3"] as const;
 
@@ -194,13 +194,11 @@ export default function AdminPage() {
           {/* Gen Points balance chip */}
           {balance !== null && (
             <span className={`text-xs rounded-full px-2.5 py-1 font-medium border ${
-              tier === "tier3"
-                ? "border-primary/30 bg-primary/10 text-primary"
-                : balance <= 5
+              balance <= 5
                 ? "border-destructive/30 bg-destructive/10 text-destructive"
                 : "border-border bg-card text-muted-foreground"
             }`}>
-              {tier === "tier3" ? "∞ Unlimited" : `${balance} pts`}
+              {balance} pts{tier === "tier3" ? " · Custom" : ""}
             </span>
           )}
 
@@ -370,11 +368,7 @@ export default function AdminPage() {
                           >
                             <td className="px-4 py-2.5 text-foreground">{m.shop_name ?? m.id.slice(0, 8)}</td>
                             <td className="px-4 py-2.5 text-muted-foreground">{TIER_LABELS[m.subscription_tier] ?? m.subscription_tier}</td>
-                            <td className="px-4 py-2.5 text-right">
-                              {m.subscription_tier === "tier3"
-                                ? <span className="text-primary">∞</span>
-                                : m.gen_points_balance}
-                            </td>
+                            <td className="px-4 py-2.5 text-right">{m.gen_points_balance}</td>
                           </tr>
                         ))}
                         {merchants.length === 0 && (
@@ -400,7 +394,7 @@ export default function AdminPage() {
                             <div className="rounded border border-border p-2">
                               <p className="text-muted-foreground">Balance</p>
                               <p className="text-foreground font-semibold text-sm mt-0.5">
-                                {selectedMerchantStats.tier === "tier3" ? "∞" : selectedMerchantStats.balance}
+                                {selectedMerchantStats.balance}
                               </p>
                             </div>
                             <div className="rounded border border-border p-2">
