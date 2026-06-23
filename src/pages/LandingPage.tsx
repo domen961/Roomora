@@ -171,9 +171,9 @@ export default function LandingPage() {
               {
                 name:     "Starter",
                 price:    "€120",
-                points:   "500 AR try-ons / mo",
+                points:   "300 AR try-ons / mo",
                 popular:  false,
-                features: ["500 Gen Points / month", "Variant creator", "Embed on any website", "Email support"],
+                features: ["300 Gen Points / month", "Variant creator", "Embed on any website", "Email support"],
                 cta:      { label: "Coming soon", href: null, disabled: true },
               },
               {

@@ -472,7 +472,7 @@ export async function grantGenPoints(merchantId: string, amount: number, note: s
 
 const TIER_DEFAULTS: Record<string, number> = {
   free:  25,
-  tier1: 500,
+  tier1: 300,
   tier2: 1000,
   tier3: 999999, // effectively unlimited — checked by tier name, not balance
 };

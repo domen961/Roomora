@@ -12,7 +12,7 @@ interface Props {
 
 const TIER_LABELS: Record<string, string> = {
   free:  "Free — 25 Gen Points",
-  tier1: "Starter — 500 Gen Points / month",
+  tier1: "Starter — 300 Gen Points / month",
   tier2: "Pro — 1,000 Gen Points / month",
   tier3: "Unlimited",
 };
