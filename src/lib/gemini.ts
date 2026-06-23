@@ -1000,11 +1000,13 @@ export async function placeInRoom(
   // loss, and that it is in fact needed for the sofa swap to occur at all.
   const USE_CLAUDE_MEASURE = true;
 
+  const eraseParts: unknown[] = [
+    { text: erasePrompt },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
+  ];
+
   const [eraseResult, measureResult] = await Promise.allSettled([
-    callGemini([
-      { text: erasePrompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-    ]),
+    callGemini(eraseParts),
     USE_CLAUDE_MEASURE
       ? measureRoom(roomResized)
       : Promise.resolve<RoomMeasurement | null>(null),
@@ -1047,11 +1049,27 @@ export async function placeInRoom(
 
   const eraseWasApplied = eraseResult.status === "fulfilled" && targetPresent;
 
+  // ── Erase with retry-on-no-op ────────────────────────────────────────────────
+  // The most common failure is the erase step no-op'ing — it leaves the old
+  // furniture in place. The place step then lays the new product over the old one,
+  // producing a "fusion" blend, or just keeps the old one. Guarantee a clean canvas
+  // by retrying the erase until the room visibly changes (old furniture gone).
+  const ERASE_DIFF_THRESHOLD = 5;   // mean 0–255 diff below this ≈ nothing was erased
+  const MAX_ERASE_ATTEMPTS   = 3;
+
   let canvasDataUrl = roomResized;
   if (eraseWasApplied) {
     // Crop erase output back to the original aspect ratio so any erase-step
     // framing drift doesn't compound into the place step
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
+    for (let attempt = 1; attempt < MAX_ERASE_ATTEMPTS; attempt++) {
+      const diff = await imageMeanDiff(canvasDataUrl, roomResized);
+      if (diff >= ERASE_DIFF_THRESHOLD) break;  // something was actually erased
+      console.warn(`placeInRoom: erase looks like a no-op (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying erase (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
+      try {
+        canvasDataUrl = await cropToRatio(await callGemini(eraseParts), origW, origH);
+      } catch { break; }
+    }
   }
 
   const roomNote  = buildRoomNote(measurement);
@@ -1115,24 +1133,20 @@ export async function placeInRoom(
   ];
 
   // ── Place call with retry-on-no-op ──────────────────────────────────────────
-  // Gemini is non-deterministic and sometimes returns the room essentially
-  // unchanged (old furniture still present, no swap). Detect that by comparing the
-  // result against the ORIGINAL room: a genuine swap changes the furniture region
-  // well above the re-encode noise floor; a no-op stays near-identical. Retry a few
-  // times so the user reliably gets a real swap instead of having to click regenerate.
-  // Only applied when an erase was actually expected (a sofa/furniture was present);
-  // for empty rooms the result legitimately differs from the input, so no gating needed.
-  const NOOP_DIFF_THRESHOLD = 7;   // mean 0–255 diff below this ≈ unchanged room
-  const MAX_PLACE_ATTEMPTS  = 4;
+  // With a clean erased canvas, the place step should add the new product. If it
+  // no-ops it returns the canvas essentially unchanged (no product added). Detect
+  // that by comparing against the BACKGROUND it composited onto: a real placement
+  // changes the product region well above the re-encode noise floor. Retry so the
+  // user reliably gets a placed product without manually clicking regenerate.
+  const PLACE_DIFF_THRESHOLD = 6;   // mean 0–255 diff below this ≈ nothing placed
+  const MAX_PLACE_ATTEMPTS   = 3;
 
   let raw = await callGemini(parts);
-  if (eraseWasApplied) {
-    for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
-      const diff = await imageMeanDiff(raw, roomResized);
-      if (diff >= NOOP_DIFF_THRESHOLD) break;  // swap visibly happened
-      console.warn(`placeInRoom: result looks unchanged (diff ${diff.toFixed(1)} < ${NOOP_DIFF_THRESHOLD}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
-      raw = await callGemini(parts);
-    }
+  for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
+    const diff = await imageMeanDiff(raw, canvasDataUrl);
+    if (diff >= PLACE_DIFF_THRESHOLD) break;  // product was visibly placed
+    console.warn(`placeInRoom: place looks like a no-op (diff ${diff.toFixed(1)} < ${PLACE_DIFF_THRESHOLD}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
+    raw = await callGemini(parts);
   }
   return cropToRatio(raw, origW, origH);
 }
