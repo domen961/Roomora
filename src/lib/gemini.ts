@@ -1107,13 +1107,13 @@ export async function placeInRoom(
     (productDescription ? `Product details: ${productDescription}\n` : ``) +
     `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
     `Do NOT carry over any background from the reference images.\n\n` +
-    `FRAMING MASTER (${framingSlot}): The original room from the same camera angle, BEFORE the old ${eraseLabel} was removed. Use it for two things: (a) a pixel-level framing template — ceiling line, wall edges, artworks, windows and floor boundaries must appear at the identical positions; and (b) the source of truth for EVERY OTHER object in the room (coffee tables, side tables, chairs, lamps, plants, rugs, decor) — all of those must remain in your output exactly as shown here. The ONLY object from this image that should NOT appear is the old ${eraseLabel}, which is being replaced.\n\n` +
-    `PRIMARY GOAL — DO NOT SKIP: Your output MUST show the new ${productLabel.toLowerCase()} standing in the room, and the old ${eraseLabel} MUST be gone. Returning the room unchanged, or leaving the old ${eraseLabel} in place, is a FAILURE. The single most important thing is that the swap visibly happened.\n\n` +
+    `FRAMING MASTER (${framingSlot}): The room with the old ${eraseLabel} ALREADY REMOVED — there is an empty floor area where it used to be. This image still shows every OTHER object that must stay (coffee tables, side tables, chairs, lamps, plants, rugs, decor). Use it as (a) a pixel-level framing template — ceiling line, wall edges, artworks, windows and floor boundaries at the identical positions; and (b) the truth for what furniture remains. There is NO old ${eraseLabel} in this image and there must be none in your output — you will add the NEW ${productLabel.toLowerCase()} in that empty area instead.\n\n` +
+    `PRIMARY GOAL — DO NOT SKIP: Your output MUST show the new ${productLabel.toLowerCase()} standing in the room. Returning the room with the empty floor area still empty (no ${productLabel.toLowerCase()} added) is a FAILURE. The single most important thing is that the new ${productLabel.toLowerCase()} is clearly, visibly present.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
-    `1. Place the new ${productLabel.toLowerCase()} on the floor where the old ${eraseLabel} stood.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} The old ${eraseLabel} must NOT remain — only the new ${productLabel.toLowerCase()} occupies that spot.\n` +
+    `1. Add the new ${productLabel.toLowerCase()} on the floor in the empty area where the old ${eraseLabel} used to be.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} It must be clearly visible — the empty area is filled by the new ${productLabel.toLowerCase()}.\n` +
     `2. Keep the framing identical to the FRAMING MASTER: ceiling, walls, artworks, windows and floor boundaries at the same positions. Do not zoom or recompose.\n` +
-    `2b. Preserve every OTHER object exactly as it appears in the FRAMING MASTER — coffee tables, side tables, chairs, lamps, plants, rugs, decor. If the BACKGROUND is missing one (the ${eraseLabel}-removal step sometimes deletes a nearby table by mistake), restore just that object from the FRAMING MASTER. Never delete a table or other object — but do NOT bring back the old ${eraseLabel}.\n` +
+    `2b. Preserve every OTHER object exactly as it appears in the FRAMING MASTER — coffee tables, side tables, chairs, lamps, plants, rugs, decor. Never delete or move any of them. The ONLY change to the room is adding the new ${productLabel.toLowerCase()}.\n` +
     `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
     `5. Lighting — study the room carefully before rendering:\n` +
@@ -1125,11 +1125,18 @@ export async function placeInRoom(
     `6. Blend edges naturally — no hard cuts, bright halos, or visible compositing seams.\n\n` +
     `Output only the composited image. No text.`;
 
+  // FRAMING MASTER = the ERASED canvas (not the original room) when an erase ran, so
+  // the old furniture is absent from EVERY input to the place step. This prevents the
+  // two dominant failures: fusion (new product blended with the old one) and
+  // "nothing-changed" (the old furniture reproduced from the framing master). The
+  // erased canvas still carries all OTHER furniture (tables etc.), so they're kept.
+  const framingMaster = eraseWasApplied ? canvasDataUrl : roomResized;
+
   const parts: unknown[] = [
     { text: placePrompt },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },           // BACKGROUND (erased)
     ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // PRODUCT REFERENCE
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },             // FRAMING MASTER (original)
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(framingMaster) } },           // FRAMING MASTER (erased canvas)
   ];
 
   // ── Place call with retry-on-no-op ──────────────────────────────────────────
