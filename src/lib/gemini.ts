@@ -1063,7 +1063,10 @@ export async function placeInRoom(
   // furniture in place. The place step then lays the new product over the old one,
   // producing a "fusion" blend, or just keeps the old one. Guarantee a clean canvas
   // by retrying the erase until the room visibly changes (old furniture gone).
-  const ERASE_DIFF_THRESHOLD = 10;  // mean 0–255 diff below this ≈ sofa not really removed
+  // Empirically: a full sofa removal scores ~20+ mean diff vs the original; a weak
+  // partial erase (which leaves the sofa and causes fusion / "nothing changed")
+  // scores ~11. Threshold sits between them so partial erases are retried.
+  const ERASE_DIFF_THRESHOLD = 14;
   const MAX_ERASE_ATTEMPTS   = 4;
 
   let canvasDataUrl = roomResized;
