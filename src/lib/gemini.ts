@@ -1063,8 +1063,8 @@ export async function placeInRoom(
   // furniture in place. The place step then lays the new product over the old one,
   // producing a "fusion" blend, or just keeps the old one. Guarantee a clean canvas
   // by retrying the erase until the room visibly changes (old furniture gone).
-  const ERASE_DIFF_THRESHOLD = 5;   // mean 0–255 diff below this ≈ nothing was erased
-  const MAX_ERASE_ATTEMPTS   = 3;
+  const ERASE_DIFF_THRESHOLD = 10;  // mean 0–255 diff below this ≈ sofa not really removed
+  const MAX_ERASE_ATTEMPTS   = 4;
 
   let canvasDataUrl = roomResized;
   if (eraseWasApplied) {
@@ -1073,8 +1073,9 @@ export async function placeInRoom(
     canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
     for (let attempt = 1; attempt < MAX_ERASE_ATTEMPTS; attempt++) {
       const diff = await imageMeanDiff(canvasDataUrl, roomResized);
-      if (diff >= ERASE_DIFF_THRESHOLD) break;  // something was actually erased
-      console.warn(`placeInRoom: erase looks like a no-op (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying erase (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
+      console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_DIFF_THRESHOLD})`);
+      if (diff >= ERASE_DIFF_THRESHOLD) break;  // sofa was substantially removed
+      console.warn(`[Furora] erase looks insufficient (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying erase (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
       try {
         canvasDataUrl = await cropToRatio(await callGemini(eraseParts), origW, origH);
       } catch { break; }
@@ -1159,9 +1160,13 @@ export async function placeInRoom(
 
   let raw = await callGemini(parts);
   for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
-    const diff = await imageMeanDiff(raw, canvasDataUrl);
-    if (diff >= PLACE_DIFF_THRESHOLD) break;  // product was visibly placed
-    console.warn(`placeInRoom: place looks like a no-op (diff ${diff.toFixed(1)} < ${PLACE_DIFF_THRESHOLD}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
+    const diffCanvas = await imageMeanDiff(raw, canvasDataUrl);  // ≈0 → nothing placed
+    const diffOrig   = eraseWasApplied ? await imageMeanDiff(raw, roomResized) : 255; // ≈0 → old furniture reproduced
+    console.log(`[Furora] place attempt ${attempt}: diff vs erased-canvas = ${diffCanvas.toFixed(1)} (need ≥ ${PLACE_DIFF_THRESHOLD}), diff vs original = ${diffOrig.toFixed(1)}`);
+    const placedSomething = diffCanvas >= PLACE_DIFF_THRESHOLD;
+    const stillOriginal   = diffOrig < PLACE_DIFF_THRESHOLD;  // result looks like the untouched room
+    if (placedSomething && !stillOriginal) break;  // a real, new placement
+    console.warn(`[Furora] place result looks wrong (placed=${placedSomething}, stillOriginal=${stillOriginal}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
     raw = await callGemini(parts);
   }
   return cropToRatio(raw, origW, origH);
