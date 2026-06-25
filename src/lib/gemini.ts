@@ -1158,8 +1158,11 @@ export async function placeInRoom(
   // that by comparing against the BACKGROUND it composited onto: a real placement
   // changes the product region well above the re-encode noise floor. Retry so the
   // user reliably gets a placed product without manually clicking regenerate.
-  const PLACE_DIFF_THRESHOLD = 6;   // mean 0–255 diff below this ≈ nothing placed
-  const MAX_PLACE_ATTEMPTS   = 3;
+  // Empirically: a clear placement scores ~12+ mean diff; a weak/ghosted placement
+  // that the user reads as "failed" scores ~8-9 (e.g. a chair that didn't really
+  // land). Threshold sits above those so weak placements are retried.
+  const PLACE_DIFF_THRESHOLD = 10;
+  const MAX_PLACE_ATTEMPTS   = 4;
 
   let raw = await callGemini(parts);
   for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
