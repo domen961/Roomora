@@ -12,7 +12,7 @@ export default function TryPage() {
   const { shopId, productId } = useParams<{ shopId: string; productId: string }>();
 
   const [phase,         setPhase]         = useState<Phase>("loading");
-  const [product,       setProduct]       = useState<{ id: string; images: string[]; description: string; name: string; length_cm: number | null; width_cm: number | null; height_cm: number | null } | null>(null);
+  const [product,       setProduct]       = useState<{ id: string; images: string[]; description: string; name: string; category: string | null; length_cm: number | null; width_cm: number | null; height_cm: number | null } | null>(null);
   const [result,        setResult]        = useState<string | null>(null);
   const [error,         setError]         = useState("");
   const [lastRoomPhoto, setLastRoomPhoto] = useState<string>("");
@@ -46,7 +46,7 @@ export default function TryPage() {
           setPhase("error");
           return;
         }
-        setProduct({ id: found.id, images: found.images, description: found.description, name: found.name, length_cm: found.length_cm, width_cm: found.width_cm, height_cm: found.height_cm });
+        setProduct({ id: found.id, images: found.images, description: found.description, name: found.name, category: found.category, length_cm: found.length_cm, width_cm: found.width_cm, height_cm: found.height_cm });
         setPhase("room");
       })
       .catch((err: Error) => { setError(err.message); setPhase("error"); });

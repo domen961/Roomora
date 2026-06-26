@@ -132,7 +132,11 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         }
 
         const activeImages = productImagesOverride ?? product.images;
-        const result = await placeInRoom(activeImages, roomPhoto, product.name, product.description, undefined, product.category);
+        const result = await placeInRoom(
+          activeImages, roomPhoto, product.name, product.description,
+          { length_cm: product.length_cm ?? undefined, width_cm: product.width_cm ?? undefined, height_cm: product.height_cm ?? undefined },
+          product.category,
+        );
 
         // Save compressed result back to room_captures so phone can display it
         if (captureToken) {
