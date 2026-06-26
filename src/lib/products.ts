@@ -4,9 +4,6 @@ export const FURNITURE_CATEGORIES = [
   "chair",
   "bed",
   "wardrobe",
-  "shelving",
-  "desk",
-  "TV stand",
   "other",
 ] as const;
 
