@@ -991,16 +991,27 @@ export async function placeInRoom(
 
   // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
   // Product image prep intentionally runs AFTER allSettled so it can use camera_tilt_deg.
+  const isSofa = eraseLabel === "sofa";
   const erasePrompt =
     `You are a photo editor. You will receive one image.\n\n` +
     `CANVAS: A real photograph of a room.\n\n` +
     `Task: Look for a ${eraseLabel} in this room. ` +
-    `If one is present, erase it completely and fill the area naturally with the surrounding floor and wall.\n\n` +
-    `STRICT RULES:\n` +
-    `- Erase ONLY items that are clearly a ${eraseLabel}. Do not erase any other furniture type.\n` +
-    `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other object.\n` +
-    `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
-    `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} if you can see one.\n\n` +
+    `If one is present, erase ALL of it and fill the area naturally with the surrounding floor and wall.\n\n` +
+    (isSofa
+      ? `WHAT COUNTS AS THE SOFA — erase the whole thing:\n` +
+        `- The main seating body.\n` +
+        `- If it is a corner or sectional sofa, EVERY connected upholstered seating section — the chaise lounge and corner module that form the L or U shape — even if a section is a different colour, in shadow, or covered by a blanket. The entire sofa goes, leaving no seating section behind.\n` +
+        `- Any blanket, throw, or pillow lying on the sofa is erased together with it. A section covered by a blanket is still part of the sofa — do NOT mistake it for a separate pile or a different object and leave it.\n\n` +
+        `STRICT RULES:\n` +
+        `- Erase the COMPLETE sofa — all connected sections plus anything draped on it. Leaving one section (e.g. a blanket-covered corner) still in the room is a FAILURE.\n` +
+        `- Do NOT touch or remove any of these — leave them EXACTLY as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations. A coffee table or side table sitting next to, in front of, or even partly overlapping the sofa is NOT part of it — keep it fully intact. Only upholstered seating is part of the sofa; hard furniture like tables is never part of it.\n` +
+        `- If you cannot find a sofa in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
+        `- Do not "clear the area" or remove nearby items to make space — erase only the sofa and what is draped on it.\n\n`
+      : `STRICT RULES:\n` +
+        `- Erase ONLY items that are clearly a ${eraseLabel}. Do not erase any other furniture type.\n` +
+        `- Do NOT touch or remove any of these — they must stay exactly as-is: ${otherTypes}, rugs, plants, curtains, lamps, artwork, decorations, or any other object.\n` +
+        `- If you cannot find a ${eraseLabel} in the room, return the photo pixel-for-pixel unchanged. Do not erase anything.\n` +
+        `- Do not "clear the area" or remove things to make space — only erase an actual ${eraseLabel} if you can see one.\n\n`) +
     `IMPORTANT: Output the photo at the EXACT SAME framing and zoom level as the input. Do not zoom in, zoom out, pan, or recompose in any way.\n\n` +
     `Output only the edited photo. No text.`;
 
