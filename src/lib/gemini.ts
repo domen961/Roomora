@@ -1090,24 +1090,35 @@ export async function placeInRoom(
       ? await cropToRatio(eraseResult.value, origW, origH)
       : null;
 
+    let best: string | null = null;   // most-erased image so far (highest diff vs original)
+    let bestDiff = 0;
+
     for (let attempt = 1; attempt <= MAX_ERASE_ATTEMPTS; attempt++) {
       if (candidate) {
         const diff = await imageMeanDiff(candidate, roomResized);
         console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_DIFF_THRESHOLD})`);
+        if (diff > bestDiff) { best = candidate; bestDiff = diff; }
         if (diff >= ERASE_DIFF_THRESHOLD) { canvasDataUrl = candidate; eraseWasApplied = true; break; }
-        console.warn(`[Furora] erase weak (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
       } else {
-        console.warn(`[Furora] erase attempt ${attempt}: call returned no image, retrying`);
+        console.warn(`[Furora] erase attempt ${attempt}: call returned no image`);
       }
-      if (attempt < MAX_ERASE_ATTEMPTS) {
-        try { candidate = await cropToRatio(await callGemini(eraseParts), origW, origH); }
-        catch (e) { console.warn(`[Furora] erase call failed:`, e instanceof Error ? e.message : e); candidate = null; }
-      }
+      if (attempt >= MAX_ERASE_ATTEMPTS) break;
+      // PROGRESSIVE: feed the current partial erase back in so each pass removes more of
+      // a large sectional (re-erasing the original just repeats the same partial result).
+      // Fall back to the original room if we don't have a candidate yet.
+      const src = candidate ?? roomResized;
+      console.warn(`[Furora] erase insufficient — running progressive pass ${attempt + 1}/${MAX_ERASE_ATTEMPTS}`);
+      try {
+        candidate = await cropToRatio(
+          await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(src) } }]),
+          origW, origH,
+        );
+      } catch (e) { console.warn(`[Furora] erase pass failed:`, e instanceof Error ? e.message : e); /* keep previous candidate */ }
     }
 
-    // Best effort: if no attempt cleared the threshold but we got *some* erased image,
-    // use it (still cleaner than the original full of furniture for the place step).
-    if (!eraseWasApplied && candidate) { canvasDataUrl = candidate; eraseWasApplied = true; }
+    // Best effort: if no pass cleared the threshold, use the most-erased image we got
+    // (still far cleaner than the original for the place step).
+    if (!eraseWasApplied && best) { canvasDataUrl = best; eraseWasApplied = true; }
   }
 
   const roomNote  = buildRoomNote(measurement);
