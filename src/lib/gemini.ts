@@ -1067,33 +1067,45 @@ export async function placeInRoom(
          (f) => f.toLowerCase().includes(eraseLabel) || eraseLabel.includes(f.toLowerCase())
        );
 
-  const eraseWasApplied = eraseResult.status === "fulfilled" && targetPresent;
-
-  // ── Erase with retry-on-no-op ────────────────────────────────────────────────
-  // The most common failure is the erase step no-op'ing — it leaves the old
-  // furniture in place. The place step then lays the new product over the old one,
-  // producing a "fusion" blend, or just keeps the old one. Guarantee a clean canvas
-  // by retrying the erase until the room visibly changes (old furniture gone).
+  // ── Erase, with retry on failure AND on weak/no-op result ────────────────────
+  // Three ways the erase leaves old furniture behind → place step fuses:
+  //   1. the erase Gemini call REJECTS (returns text not an image / times out),
+  //   2. it no-ops (returns the room unchanged),
+  //   3. it partially erases (e.g. one section of a sectional).
+  // All three are handled the same way: keep calling the erase until we get an image
+  // that substantially changes the room. We seed from the erase that already ran in
+  // parallel with claude-measure, then retry as needed.
   // Empirically: a full sofa removal scores ~20+ mean diff vs the original; a weak
-  // partial erase (which leaves the sofa and causes fusion / "nothing changed")
-  // scores ~11. Threshold sits between them so partial erases are retried.
+  // partial erase scores ~11. Threshold sits between them.
   const ERASE_DIFF_THRESHOLD = 14;
   const MAX_ERASE_ATTEMPTS   = 4;
 
-  let canvasDataUrl = roomResized;
-  if (eraseWasApplied) {
-    // Crop erase output back to the original aspect ratio so any erase-step
-    // framing drift doesn't compound into the place step
-    canvasDataUrl = await cropToRatio(eraseResult.value, origW, origH);
-    for (let attempt = 1; attempt < MAX_ERASE_ATTEMPTS; attempt++) {
-      const diff = await imageMeanDiff(canvasDataUrl, roomResized);
-      console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_DIFF_THRESHOLD})`);
-      if (diff >= ERASE_DIFF_THRESHOLD) break;  // sofa was substantially removed
-      console.warn(`[Furora] erase looks insufficient (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying erase (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
-      try {
-        canvasDataUrl = await cropToRatio(await callGemini(eraseParts), origW, origH);
-      } catch { break; }
+  let canvasDataUrl   = roomResized;
+  let eraseWasApplied = false;
+
+  if (targetPresent) {
+    let candidate: string | null = eraseResult.status === "fulfilled"
+      ? await cropToRatio(eraseResult.value, origW, origH)
+      : null;
+
+    for (let attempt = 1; attempt <= MAX_ERASE_ATTEMPTS; attempt++) {
+      if (candidate) {
+        const diff = await imageMeanDiff(candidate, roomResized);
+        console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_DIFF_THRESHOLD})`);
+        if (diff >= ERASE_DIFF_THRESHOLD) { canvasDataUrl = candidate; eraseWasApplied = true; break; }
+        console.warn(`[Furora] erase weak (diff ${diff.toFixed(1)} < ${ERASE_DIFF_THRESHOLD}), retrying (attempt ${attempt + 1}/${MAX_ERASE_ATTEMPTS})`);
+      } else {
+        console.warn(`[Furora] erase attempt ${attempt}: call returned no image, retrying`);
+      }
+      if (attempt < MAX_ERASE_ATTEMPTS) {
+        try { candidate = await cropToRatio(await callGemini(eraseParts), origW, origH); }
+        catch (e) { console.warn(`[Furora] erase call failed:`, e instanceof Error ? e.message : e); candidate = null; }
+      }
     }
+
+    // Best effort: if no attempt cleared the threshold but we got *some* erased image,
+    // use it (still cleaner than the original full of furniture for the place step).
+    if (!eraseWasApplied && candidate) { canvasDataUrl = candidate; eraseWasApplied = true; }
   }
 
   const roomNote  = buildRoomNote(measurement);
