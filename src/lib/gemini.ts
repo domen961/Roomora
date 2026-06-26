@@ -1067,6 +1067,8 @@ export async function placeInRoom(
          (f) => f.toLowerCase().includes(eraseLabel) || eraseLabel.includes(f.toLowerCase())
        );
 
+  console.log(`[Furora] BUILD v3 · erase-decision: targetPresent=${targetPresent}, eraseCall=${eraseResult.status}, detected=${JSON.stringify(measurement?.detected_furniture ?? null)}`);
+
   // ── Erase, with retry on failure AND on weak/no-op result ────────────────────
   // Three ways the erase leaves old furniture behind → place step fuses:
   //   1. the erase Gemini call REJECTS (returns text not an image / times out),
