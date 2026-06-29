@@ -1079,9 +1079,12 @@ export async function placeInRoom(
   // parallel with claude-measure, then retry as needed.
   // Empirically: a full sofa removal scores ~20+ mean diff vs the original; a weak
   // partial erase scores ~11. Threshold sits between them.
-  // A clean one-shot erase scores ~14+ mean diff vs the original; a weak partial scores ~11.
-  const ERASE_MIN_DIFF     = 14;   // below this on pass 1, the erase barely worked → keep going
-  const ERASE_GAIN_STOP    = 10;   // once past min, stop when a progressive pass adds less than this
+  // Empirically: a small sofa cleared in one shot scores ~14–20 mean diff vs the original;
+  // a large sectional fully cleared scores ~28+; a weak partial that left most of it scores ~11–18.
+  const ERASE_MIN_DIFF     = 14;   // pass-1 one-shot clear bar (simple, single-piece rooms)
+  const ERASE_GOOD_DIFF    = 28;   // diff at which a big sectional is convincingly cleared
+  const ERASE_PLATEAU_GAIN = 8;    // once past GOOD_DIFF, a pass adding < this means the bulk is gone
+  const ERASE_STALL_GAIN   = 3;    // a pass adding < this means the model converged → noop, stop
   const MAX_ERASE_ATTEMPTS = 4;
 
   let canvasDataUrl   = roomResized;
@@ -1103,15 +1106,15 @@ export async function placeInRoom(
         console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_MIN_DIFF}, gain ${gain.toFixed(1)})`);
         if (diff > bestDiff) { best = candidate; bestDiff = diff; }
 
-        if (diff >= ERASE_MIN_DIFF) {
-          // Pass 1 already cleared the target in one shot (the common, simple-room case) →
-          // stop immediately so we never over-erase a room that is already clean.
-          // On later passes (a large multi-piece sectional) keep climbing while each pass
-          // still removes a big chunk; stop once progress plateaus.
-          if (attempt === 1 || gain < ERASE_GAIN_STOP) {
-            canvasDataUrl = candidate; eraseWasApplied = true; break;
-          }
-        }
+        // Decide whether to stop. Crucially, a small gain does NOT mean "done" while the
+        // absolute diff is still low — that's a weak pass with lots of furniture remaining,
+        // so we must keep climbing. Only stop when the room is convincingly cleared, or the
+        // model has genuinely converged (a pass changed almost nothing → further passes are noops).
+        const oneShot = attempt === 1 && diff >= ERASE_MIN_DIFF;                    // simple room cleared in one pass
+        const cleared = diff >= ERASE_GOOD_DIFF && gain < ERASE_PLATEAU_GAIN;        // bulk of a sectional removed + plateaued
+        const stalled = attempt > 1 && gain < ERASE_STALL_GAIN;                      // model won't remove any more this run
+        if (oneShot || cleared || stalled) break;
+
         prevDiff = diff;
       } else {
         console.warn(`[Furora] erase attempt ${attempt}: call returned no image`);
@@ -1130,8 +1133,8 @@ export async function placeInRoom(
       } catch (e) { console.warn(`[Furora] erase pass failed:`, e instanceof Error ? e.message : e); /* keep previous candidate */ }
     }
 
-    // Best effort: if we exhausted attempts while still climbing, use the most-erased image.
-    if (!eraseWasApplied && best) { canvasDataUrl = best; eraseWasApplied = true; }
+    // Always composite onto the most-erased image we produced across all passes.
+    if (best) { canvasDataUrl = best; eraseWasApplied = true; }
   }
 
   const roomNote  = buildRoomNote(measurement);
