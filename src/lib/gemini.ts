@@ -1205,6 +1205,7 @@ export async function placeInRoom(
   const roomNote  = buildRoomNote(measurement);
   const perspNote = buildPerspectiveNote(measurement);
   const scaleNote = buildScaleNote(measurement, dimensions);
+  console.log(`[Furora] scale: refs=${JSON.stringify(measurement?.visible_refs ?? null)} ·${scaleNote || " (none)"}`);
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
   const numRefs     = productResized.length;
