@@ -1351,11 +1351,16 @@ export async function placeInRoom(
   // a present target (no old furniture to fuse with otherwise). Null verdict → treat as clean.
   // COST GATE: a clean single-pass erase followed by a strong first-try placement is almost
   // never fused (the canvas genuinely was cleared, so there's nothing for the new product to
-  // fuse with). Skip the expensive Sonnet verify on those runs — the common simple-room case —
-  // and only verify when there's a difficulty signal: a multi-pass erase (drift-prone), a place
-  // that needed retries, or a weak final place diff. Fusion only arises out of those signals.
+  // fuse with). Skip the expensive Sonnet verify on those runs and only verify when there's a
+  // difficulty signal: a multi-pass erase (drift-prone), a place that needed retries, or a weak
+  // final place diff.
+  // EXCEPTION: sofas ALWAYS verify. They are the category where fusion AND hallucination (Gemini
+  // inventing an extra grey sofa beside the new one) occur, and no pixel metric can distinguish
+  // a fully-cleared sofa from a partial one — only the vision check can. The cost saving still
+  // applies to empty rooms and non-sofa categories (tables, chairs, beds).
   const STRONG_PLACE_DIFF   = 18;
-  const placementLooksClean = eraseAttempts === 1 && placeAttempts === 1 && placeDiffCanvas >= STRONG_PLACE_DIFF;
+  const placementLooksClean = !isSofa
+    && eraseAttempts === 1 && placeAttempts === 1 && placeDiffCanvas >= STRONG_PLACE_DIFF;
 
   let needsSwap = !placedOk;
   if (placedOk && eraseWasApplied && !placementLooksClean) {
