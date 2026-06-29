@@ -1217,15 +1217,52 @@ export async function placeInRoom(
   const MAX_PLACE_ATTEMPTS   = 4;
 
   let raw = await callGemini(parts);
-  for (let attempt = 1; attempt < MAX_PLACE_ATTEMPTS; attempt++) {
+  let placedOk = false;
+  for (let attempt = 1; attempt <= MAX_PLACE_ATTEMPTS; attempt++) {
     const diffCanvas = await imageMeanDiff(raw, canvasDataUrl);  // ≈0 → nothing placed
     const diffOrig   = eraseWasApplied ? await imageMeanDiff(raw, roomResized) : 255; // ≈0 → old furniture reproduced
     console.log(`[Furora] place attempt ${attempt}: diff vs erased-canvas = ${diffCanvas.toFixed(1)} (need ≥ ${PLACE_DIFF_THRESHOLD}), diff vs original = ${diffOrig.toFixed(1)}`);
     const placedSomething = diffCanvas >= PLACE_DIFF_THRESHOLD;
     const stillOriginal   = diffOrig < PLACE_DIFF_THRESHOLD;  // result looks like the untouched room
-    if (placedSomething && !stillOriginal) break;  // a real, new placement
+    if (placedSomething && !stillOriginal) { placedOk = true; break; }  // a real, new placement
+    if (attempt >= MAX_PLACE_ATTEMPTS) break;
     console.warn(`[Furora] place result looks wrong (placed=${placedSomething}, stillOriginal=${stillOriginal}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
     raw = await callGemini(parts);
   }
+
+  // FALLBACK — direct swap on the ORIGINAL room.
+  // If the erase→place pipeline never produced a visible product, the usual cause is a
+  // silently-failed erase: the old furniture was never actually removed (the mean-diff
+  // metric was inflated by re-encoding drift), so the canvas had no empty area and the
+  // place step kept no-opping. A one-shot "remove the old X, put this new one in its
+  // place" edit on the clean original is a different mechanism that often succeeds where
+  // the cleared-canvas path stalls. Only runs on the failure path, so working rooms are
+  // untouched. Gated on eraseWasApplied so we only "swap" when there was a target present.
+  if (!placedOk && eraseWasApplied) {
+    console.warn(`[Furora] place no-op after ${MAX_PLACE_ATTEMPTS} attempts — falling back to a direct swap on the original room`);
+    const swapPrompt =
+      `You are editing a photo of a room. Replace one piece of furniture with a different one.\n\n` +
+      `NEW ${productLabel} REFERENCE (${productSlot}): photos of the new ${productLabel.toLowerCase()} to put into the room.\n` +
+      (productDescription ? `Product details: ${productDescription}\n` : ``) +
+      `Instructions:\n` +
+      `1. Completely remove the existing ${eraseLabel} currently in the room — every part of it, including any corner, chaise, or extension modules, and any cushions, pillows, blankets or bags resting on it.\n` +
+      `2. In that same spot, add the NEW ${productLabel.toLowerCase()} from the REFERENCE. Match its shape, colour, material, texture and proportions exactly — do not redesign it.${dimNote}${scaleNote}\n` +
+      `3. Keep EVERYTHING else in the room identical — walls, floor, windows, curtains, the coffee table and any side tables, lamps, plants, rugs and decor, and the exact camera framing. Do not move or delete any of them.\n` +
+      `4. Render the new ${productLabel.toLowerCase()} from the room's own camera angle, resting firmly on the floor with realistic contact shadows and lighting matched to the room.${perspNote}\n` +
+      `Output only the edited image. No text.`;
+    const swapParts: unknown[] = [
+      { text: swapPrompt },
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // original room (clean reference)
+      ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+    ];
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const swapRaw  = await callGemini(swapParts);
+      const swapDiff = await imageMeanDiff(swapRaw, roomResized);
+      console.log(`[Furora] swap fallback attempt ${attempt}: diff vs original = ${swapDiff.toFixed(1)} (need ≥ ${PLACE_DIFF_THRESHOLD})`);
+      raw = swapRaw;  // keep the latest swap result regardless — it's the best remaining option
+      if (swapDiff >= PLACE_DIFF_THRESHOLD) break;  // the swap actually changed the room
+    }
+  }
+
   return cropToRatio(raw, origW, origH);
 }
