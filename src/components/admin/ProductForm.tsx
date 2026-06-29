@@ -370,27 +370,41 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
       {/* ── Dimensions ── */}
       <div className="flex flex-col gap-2">
         <label className="text-xs uppercase tracking-widest text-muted-foreground">
-          Dimensions (cm) — used for scale in AI render
+          Dimensions (cm) — length &amp; width drive AI scale accuracy
         </label>
         <div className="grid grid-cols-3 gap-2">
           {[
-            { label: "Length", value: lengthCm, set: setLengthCm },
-            { label: "Width",  value: widthCm,  set: setWidthCm  },
-            { label: "Height", value: heightCm, set: setHeightCm },
-          ].map(({ label, value, set }) => (
-            <div key={label} className="flex flex-col gap-1">
-              <span className="text-xs text-muted-foreground">{label}</span>
-              <input
-                type="number"
-                min="0"
-                placeholder="—"
-                value={value}
-                onChange={(e) => set(e.target.value)}
-                className="rounded-md border border-input bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring [appearance:textfield]"
-              />
-            </div>
-          ))}
+            { label: "Length", value: lengthCm, set: setLengthCm, key: "length" },
+            { label: "Width",  value: widthCm,  set: setWidthCm,  key: "width"  },
+            { label: "Height", value: heightCm, set: setHeightCm, key: "height" },
+          ].map(({ label, value, set, key }) => {
+            const scaleCritical = key !== "height";          // length & width drive footprint
+            const missing       = scaleCritical && !value;
+            return (
+              <div key={label} className="flex flex-col gap-1">
+                <span className="text-xs text-muted-foreground">
+                  {label}{scaleCritical && <span className="text-amber-500/80"> *</span>}
+                </span>
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="—"
+                  value={value}
+                  onChange={(e) => set(e.target.value)}
+                  className={`rounded-md border bg-card px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring [appearance:textfield] ${
+                    missing ? "border-amber-500/50" : "border-input"
+                  }`}
+                />
+              </div>
+            );
+          })}
         </div>
+        {(!lengthCm || !widthCm) && (
+          <p className="text-xs text-amber-500/90">
+            ⚠ Add <span className="font-medium">length &amp; width</span> — they decide how big the item
+            looks in the customer&apos;s room. Without them the size is only estimated and may render too small.
+          </p>
+        )}
       </div>
 
       {/* ── Product photos ── */}

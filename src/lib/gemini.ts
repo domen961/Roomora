@@ -386,18 +386,45 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
 }
 
 /**
+ * Estimates a typical footprint (longest horizontal side, cm) from the product category and
+ * height, used as a FALLBACK when the merchant left length/width blank. Without this, a
+ * product with only a height would get no footprint anchor at all and render far too small.
+ * Returns null for categories with no reliable typical size.
+ */
+function estimateFootprintCm(category: string | null | undefined, heightCm: number | null): number | null {
+  const c = (category ?? "").toLowerCase();
+  const h = heightCm ?? 0;
+  if (c.includes("table"))                          return h >= 65 ? 150 : 110;  // dining/console vs coffee/side
+  if (c.includes("sofa") || c.includes("couch"))    return 200;                  // ~3-seat default
+  if (c.includes("bed"))                            return 150;                  // double mattress width
+  if (c.includes("wardrobe") || c.includes("cabinet")) return 100;
+  if (c.includes("shelv") || c.includes("bookcase"))   return 90;
+  if (c.includes("desk"))                           return 130;
+  if (c.includes("chair"))                          return 65;
+  return null;  // unknown category → no reliable estimate, skip the footprint anchor
+}
+
+/**
  * Builds a scale hint with MULTIPLE concrete anchors Gemini can verify against objects
  * it can actually see in the room. Two anchors matter:
- *  - FOOTPRINT (longest horizontal side vs the visible floor width) — the dominant size
- *    cue for tables, beds, sofas and rugs, which Gemini otherwise renders too small.
+ *  - FOOTPRINT (longest horizontal side vs a visible object's width) — the dominant size
+ *    cue for tables, beds, sofas and rugs, which Gemini otherwise renders too small. When
+ *    length/width are missing it falls back to a category-typical estimate.
  *  - HEIGHT (vs the visible room object closest in height, falling back to a 200cm door).
  * Anchoring footprint is what fixes "the table looks smaller than its real dimensions":
  * height alone never constrains how much floor the piece covers.
  */
-function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): string {
+function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, category?: string | null): string {
   if (!dims) return "";
-  const height    = dims.height_cm ?? null;
-  const footprint = Math.max(dims.length_cm ?? 0, dims.width_cm ?? 0) || null;
+  const height = dims.height_cm ?? null;
+
+  // Real footprint from entered dims; fall back to a category-typical estimate if blank.
+  let footprint = Math.max(dims.length_cm ?? 0, dims.width_cm ?? 0) || null;
+  let footprintApprox = false;
+  if (!footprint) {
+    const est = estimateFootprintCm(category, height);
+    if (est) { footprint = est; footprintApprox = true; }
+  }
 
   const anchors: string[] = [];
 
@@ -420,20 +447,24 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
       ? pool.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // widest among preferred pool
       : null;
     const floorW = (m && m.confidence !== "low") ? m.floor_width_cm : null;
+    // When the footprint is an estimate (dims left blank), phrase it as typical, not exact.
+    const sizePhrase = footprintApprox
+      ? `a ${(category ?? "piece").toLowerCase()} like this is typically about ${footprint}cm across`
+      : `its longest side measures ${footprint}cm`;
     if (anchorObj) {
       const pct = Math.round((footprint / anchorObj.width_cm) * 100);
       anchors.push(
-        `its longest side measures ${footprint}cm — about ${pct}% as wide as the ${anchorObj.name} ` +
+        `${sizePhrase} — about ${pct}% as wide as the ${anchorObj.name} ` +
         `visible in the room (~${anchorObj.width_cm}cm wide); use that object as your size yardstick`,
       );
     } else if (floorW) {
       const pct = Math.round((footprint / floorW) * 100);
       anchors.push(
-        `its longest side measures ${footprint}cm — about ${pct}% of the visible floor width ` +
+        `${sizePhrase} — about ${pct}% of the visible floor width ` +
         `(~${floorW}cm across the room), so it should cover that much of the floor`,
       );
     } else {
-      anchors.push(`its longest side measures ${footprint}cm across`);
+      anchors.push(`${sizePhrase}`);
     }
   }
 
@@ -1212,7 +1243,7 @@ export async function placeInRoom(
 
   const roomNote  = buildRoomNote(measurement);
   const perspNote = buildPerspectiveNote(measurement);
-  const scaleNote = buildScaleNote(measurement, dimensions);
+  const scaleNote = buildScaleNote(measurement, dimensions, category ?? eraseLabel);
   console.log(`[Furora] scale: refs=${JSON.stringify(measurement?.visible_refs ?? null)} ·${scaleNote || " (none)"}`);
 
   // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
