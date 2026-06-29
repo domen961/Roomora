@@ -48,7 +48,10 @@ export default async function handler(req: any, res: any) {
     `- SUCCESS = old_present:false, new_present:true.\n` +
     `- FUSION FAILURE = old_present:true (the original ${label}, or most of it, is still there), ` +
     `regardless of new_present.\n` +
-    `- Ignore small SEPARATE footstools, ottomans, poufs or cubes — those are not the main ${label}.\n\n` +
+    `- Disregard ONLY a single small standalone footstool or pouf cube (roughly one-seat-sized ` +
+    `or smaller). But if a LARGE piece of the original-coloured ${label} remains — a corner ` +
+    `section, chaise, wing, or any seat big enough to function as a sofa or armchair — that IS ` +
+    `the original ${label} still present, so old_present is TRUE.\n\n` +
     `Return ONLY valid JSON (no markdown, no extra text):\n` +
     `{"old_present": true|false, "new_present": true|false}`;
 
