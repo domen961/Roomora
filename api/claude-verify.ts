@@ -31,18 +31,24 @@ export default async function handler(req: any, res: any) {
   const label = (targetLabel || "sofa").trim();
 
   const prompt =
-    `You are checking the quality of a furniture-replacement edit.\n` +
-    `IMAGE 1 is the ORIGINAL room — it contains an existing ${label}.\n` +
-    `IMAGE 2 is the EDITED result — the existing ${label} was supposed to be fully replaced ` +
-    `by a NEW ${label} of a different colour/design.\n\n` +
-    `Look carefully at IMAGE 2 and answer:\n` +
-    `- old_present: is the ORIGINAL ${label} from IMAGE 1 (same colour and design) still visible ` +
-    `in IMAGE 2, in whole or in large part? A correct edit removes it completely.\n` +
-    `- new_present: is a NEW, clearly different ${label} present in IMAGE 2?\n\n` +
-    `Notes:\n` +
-    `- "FUSION" (a failure) is when BOTH the original ${label} and a new ${label} appear together.\n` +
-    `- Small separate footstools, ottomans, poufs or cubes that are NOT the main ${label} do NOT ` +
-    `count as the original ${label} still being present.\n\n` +
+    `You are checking whether a furniture-replacement edit SUCCEEDED.\n\n` +
+    `IMAGE 1 is the ORIGINAL room. It contains an existing ${label}. First, note the dominant ` +
+    `COLOUR and overall form of that original ${label} (for example "large green corner sofa").\n\n` +
+    `IMAGE 2 is the EDITED result. A successful edit COMPLETELY removes the original ${label} and ` +
+    `puts a NEW ${label} of a clearly different colour in its place.\n\n` +
+    `Answer two questions about IMAGE 2:\n` +
+    `- old_present: Is a ${label} matching the ORIGINAL's colour and form (from IMAGE 1) still ` +
+    `visible in IMAGE 2, in whole or in large part? Judge by the ${label}'s BODY and FRAME, NOT the ` +
+    `cushions. The MOST COMMON failure leaves the original ${label} essentially in place and only ` +
+    `swaps or adds a few cushions of the new colour — if the original-coloured ${label} body/frame ` +
+    `is still there, old_present is TRUE even if new-coloured cushions are sitting on it.\n` +
+    `- new_present: Is a NEW, full ${label} of a clearly different colour genuinely present — with ` +
+    `its OWN body and frame, not merely new cushions placed on the old one?\n\n` +
+    `Decision:\n` +
+    `- SUCCESS = old_present:false, new_present:true.\n` +
+    `- FUSION FAILURE = old_present:true (the original ${label}, or most of it, is still there), ` +
+    `regardless of new_present.\n` +
+    `- Ignore small SEPARATE footstools, ottomans, poufs or cubes — those are not the main ${label}.\n\n` +
     `Return ONLY valid JSON (no markdown, no extra text):\n` +
     `{"old_present": true|false, "new_present": true|false}`;
 
