@@ -386,35 +386,58 @@ function buildPerspectiveNote(m: RoomMeasurement | null): string {
 }
 
 /**
- * Computes a scale hint using a door (200cm) as a universal visible reference.
- * Door comparison is far more reliable than "% of ceiling height" because a door
- * is a concrete, universally-recognised object Gemini can anchor to in the image.
+ * Builds a scale hint with MULTIPLE concrete anchors Gemini can verify against objects
+ * it can actually see in the room. Two anchors matter:
+ *  - FOOTPRINT (longest horizontal side vs the visible floor width) — the dominant size
+ *    cue for tables, beds, sofas and rugs, which Gemini otherwise renders too small.
+ *  - HEIGHT (vs the visible room object closest in height, falling back to a 200cm door).
+ * Anchoring footprint is what fixes "the table looks smaller than its real dimensions":
+ * height alone never constrains how much floor the piece covers.
  */
 function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): string {
-  if (!dims?.height_cm) return "";
-  const height = dims.height_cm;
+  if (!dims) return "";
+  const height    = dims.height_cm ?? null;
+  const footprint = Math.max(dims.length_cm ?? 0, dims.width_cm ?? 0) || null;
 
-  // Visual anchor: find the visible room object whose height is closest to the product's
-  let anchorPart = "";
-  const refs = m?.visible_refs ?? [];
-  if (refs.length) {
-    const best = refs.reduce((a, b) =>
-      Math.abs(a.height_cm - height) < Math.abs(b.height_cm - height) ? a : b,
-    );
-    const word = height < best.height_cm * 0.88 ? "noticeably shorter than"
-               : height > best.height_cm * 1.12 ? "noticeably taller than"
-               : "roughly the same height as";
-    anchorPart =
-      ` It is ${word} the ${best.name} already visible in the room (~${best.height_cm}cm tall).` +
-      ` Use that object as your primary visual size anchor — their heights must compare correctly in the final image.`;
+  const anchors: string[] = [];
+
+  // Footprint anchor — the dominant scale cue for low/wide furniture (tables, beds, sofas).
+  if (footprint) {
+    const floorW = (m && m.confidence !== "low") ? m.floor_width_cm : null;
+    if (floorW) {
+      const pct = Math.round((footprint / floorW) * 100);
+      anchors.push(
+        `its longest side measures ${footprint}cm — about ${pct}% of the visible floor width ` +
+        `(~${floorW}cm across the room), so it should cover that much of the floor`,
+      );
+    } else {
+      anchors.push(`its longest side measures ${footprint}cm across`);
+    }
   }
 
-  const doorPct  = Math.round((height / 200) * 100);
-  const ceilPart = (m && m.confidence !== "low" && m.ceiling_height_cm)
-    ? `, and ${Math.round((height / m.ceiling_height_cm) * 100)}% as tall as the ceiling (~${m.ceiling_height_cm}cm)`
-    : "";
+  // Height anchor — compared to a real object already visible in the room.
+  if (height) {
+    const refs = m?.visible_refs ?? [];
+    if (refs.length) {
+      const best = refs.reduce((a, b) =>
+        Math.abs(a.height_cm - height) < Math.abs(b.height_cm - height) ? a : b,
+      );
+      const word = height < best.height_cm * 0.85 ? "lower than"
+                 : height > best.height_cm * 1.15 ? "taller than"
+                 : "about the same height as";
+      anchors.push(`it stands ${height}cm tall — ${word} the ${best.name} already in the room (~${best.height_cm}cm tall)`);
+    } else {
+      anchors.push(`it stands ${height}cm tall — ${Math.round((height / 200) * 100)}% the height of a standard 200cm door`);
+    }
+  }
 
-  return ` Scale: the furniture is ${height}cm tall — ${doorPct}% as tall as a standard door (~200cm)${ceilPart}.${anchorPart} Match this scale precisely.`;
+  if (!anchors.length) return "";
+  return (
+    ` Real-world scale (critical — match precisely): ${anchors.join("; ")}.` +
+    ` Furniture of this kind is very often rendered too small — size it to these real measurements,` +
+    ` and if anything err slightly LARGER rather than smaller. If its edges reach or exceed the frame` +
+    ` at the correct size, that is correct; never shrink it to fit the view.`
+  );
 }
 
 /**
