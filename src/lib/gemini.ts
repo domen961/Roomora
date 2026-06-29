@@ -1193,6 +1193,7 @@ export async function placeInRoom(
 
   let canvasDataUrl   = roomResized;
   let eraseWasApplied = false;
+  let eraseAttempts   = 0;   // how many erase passes actually ran (1 = simple one-shot clear)
 
   if (targetPresent) {
     let candidate: string | null = eraseResult.status === "fulfilled"
@@ -1204,6 +1205,7 @@ export async function placeInRoom(
     let prevDiff = 0;                  // diff from the previous pass, to measure per-pass progress
 
     for (let attempt = 1; attempt <= MAX_ERASE_ATTEMPTS; attempt++) {
+      eraseAttempts = attempt;
       if (candidate) {
         const diff = await imageMeanDiff(candidate, roomResized);
         const gain = diff - prevDiff;
@@ -1326,8 +1328,12 @@ export async function placeInRoom(
 
   let raw = await callGemini(parts);
   let placedOk = false;
+  let placeAttempts   = 0;   // attempt index at which place resolved (1 = landed first try)
+  let placeDiffCanvas = 0;   // final place diff vs the erased canvas (placement strength)
   for (let attempt = 1; attempt <= MAX_PLACE_ATTEMPTS; attempt++) {
+    placeAttempts = attempt;
     const diffCanvas = await imageMeanDiff(raw, canvasDataUrl);  // ≈0 → nothing placed
+    placeDiffCanvas  = diffCanvas;
     const diffOrig   = eraseWasApplied ? await imageMeanDiff(raw, roomResized) : 255; // ≈0 → old furniture reproduced
     console.log(`[Furora] place attempt ${attempt}: diff vs erased-canvas = ${diffCanvas.toFixed(1)} (need ≥ ${PLACE_DIFF_THRESHOLD}), diff vs original = ${diffOrig.toFixed(1)}`);
     const placedSomething = diffCanvas >= PLACE_DIFF_THRESHOLD;
@@ -1343,8 +1349,16 @@ export async function placeInRoom(
   // (happens when the erase silently failed but the place step still added the new product).
   // A clean result has the old target gone and the new one present. Only runs when we erased
   // a present target (no old furniture to fuse with otherwise). Null verdict → treat as clean.
+  // COST GATE: a clean single-pass erase followed by a strong first-try placement is almost
+  // never fused (the canvas genuinely was cleared, so there's nothing for the new product to
+  // fuse with). Skip the expensive Sonnet verify on those runs — the common simple-room case —
+  // and only verify when there's a difficulty signal: a multi-pass erase (drift-prone), a place
+  // that needed retries, or a weak final place diff. Fusion only arises out of those signals.
+  const STRONG_PLACE_DIFF   = 18;
+  const placementLooksClean = eraseAttempts === 1 && placeAttempts === 1 && placeDiffCanvas >= STRONG_PLACE_DIFF;
+
   let needsSwap = !placedOk;
-  if (placedOk && eraseWasApplied) {
+  if (placedOk && eraseWasApplied && !placementLooksClean) {
     const verdict = await verifyPlacement(raw, roomResized, eraseLabel);
     if (verdict && verdict.old_present) {
       console.warn(`[Furora] verify: old ${eraseLabel} still present (old=${verdict.old_present}, new=${verdict.new_present}) — fusion, routing to swap fallback`);
@@ -1352,6 +1366,8 @@ export async function placeInRoom(
     } else if (verdict) {
       console.log(`[Furora] verify: clean (old=${verdict.old_present}, new=${verdict.new_present})`);
     }
+  } else if (placedOk && eraseWasApplied) {
+    console.log(`[Furora] verify: skipped — placement looks clean (erase ${eraseAttempts} pass, place attempt ${placeAttempts}, diff ${placeDiffCanvas.toFixed(1)} ≥ ${STRONG_PLACE_DIFF})`);
   }
 
   // FALLBACK — direct swap on the ORIGINAL room.
