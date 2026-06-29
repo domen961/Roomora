@@ -61,7 +61,10 @@ export default async function handler(req: any, res: any) {
         "content-type":      "application/json",
       },
       body: JSON.stringify({
-        model:      "claude-haiku-4-5",
+        // Sonnet (not Haiku) for the verification — judging "is the old sofa still present
+        // alongside the new one" is a nuanced visual call Haiku repeatedly got wrong. This is
+        // the safety net, so judgment quality matters more than the small extra latency/cost.
+        model:      "claude-sonnet-4-6",
         max_tokens: 100,
         messages: [
           {
