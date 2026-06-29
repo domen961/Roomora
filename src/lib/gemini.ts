@@ -1079,8 +1079,10 @@ export async function placeInRoom(
   // parallel with claude-measure, then retry as needed.
   // Empirically: a full sofa removal scores ~20+ mean diff vs the original; a weak
   // partial erase scores ~11. Threshold sits between them.
-  const ERASE_DIFF_THRESHOLD = 14;
-  const MAX_ERASE_ATTEMPTS   = 4;
+  // A clean one-shot erase scores ~14+ mean diff vs the original; a weak partial scores ~11.
+  const ERASE_MIN_DIFF     = 14;   // below this on pass 1, the erase barely worked → keep going
+  const ERASE_GAIN_STOP    = 10;   // once past min, stop when a progressive pass adds less than this
+  const MAX_ERASE_ATTEMPTS = 4;
 
   let canvasDataUrl   = roomResized;
   let eraseWasApplied = false;
@@ -1092,13 +1094,25 @@ export async function placeInRoom(
 
     let best: string | null = null;   // most-erased image so far (highest diff vs original)
     let bestDiff = 0;
+    let prevDiff = 0;                  // diff from the previous pass, to measure per-pass progress
 
     for (let attempt = 1; attempt <= MAX_ERASE_ATTEMPTS; attempt++) {
       if (candidate) {
         const diff = await imageMeanDiff(candidate, roomResized);
-        console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_DIFF_THRESHOLD})`);
+        const gain = diff - prevDiff;
+        console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_MIN_DIFF}, gain ${gain.toFixed(1)})`);
         if (diff > bestDiff) { best = candidate; bestDiff = diff; }
-        if (diff >= ERASE_DIFF_THRESHOLD) { canvasDataUrl = candidate; eraseWasApplied = true; break; }
+
+        if (diff >= ERASE_MIN_DIFF) {
+          // Pass 1 already cleared the target in one shot (the common, simple-room case) →
+          // stop immediately so we never over-erase a room that is already clean.
+          // On later passes (a large multi-piece sectional) keep climbing while each pass
+          // still removes a big chunk; stop once progress plateaus.
+          if (attempt === 1 || gain < ERASE_GAIN_STOP) {
+            canvasDataUrl = candidate; eraseWasApplied = true; break;
+          }
+        }
+        prevDiff = diff;
       } else {
         console.warn(`[Furora] erase attempt ${attempt}: call returned no image`);
       }
@@ -1107,7 +1121,7 @@ export async function placeInRoom(
       // a large sectional (re-erasing the original just repeats the same partial result).
       // Fall back to the original room if we don't have a candidate yet.
       const src = candidate ?? roomResized;
-      console.warn(`[Furora] erase insufficient — running progressive pass ${attempt + 1}/${MAX_ERASE_ATTEMPTS}`);
+      console.warn(`[Furora] erase still climbing — running progressive pass ${attempt + 1}/${MAX_ERASE_ATTEMPTS}`);
       try {
         candidate = await cropToRatio(
           await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(src) } }]),
@@ -1116,8 +1130,7 @@ export async function placeInRoom(
       } catch (e) { console.warn(`[Furora] erase pass failed:`, e instanceof Error ? e.message : e); /* keep previous candidate */ }
     }
 
-    // Best effort: if no pass cleared the threshold, use the most-erased image we got
-    // (still far cleaner than the original for the place step).
+    // Best effort: if we exhausted attempts while still climbing, use the most-erased image.
     if (!eraseWasApplied && best) { canvasDataUrl = best; eraseWasApplied = true; }
   }
 
