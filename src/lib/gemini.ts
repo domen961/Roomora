@@ -1280,21 +1280,28 @@ export async function placeInRoom(
   // cleared-canvas path stalls. Only runs on the failure path, so clean rooms are untouched.
   // Gated on eraseWasApplied so we only "swap" when there was a target present.
   if (needsSwap && eraseWasApplied) {
-    console.warn(`[Furora] result needs recovery — falling back to a direct swap on the original room`);
+    console.warn(`[Furora] result needs recovery — falling back to a framing-locked swap on the original room`);
+    // Faithful swap: SWAP ONLY the sofa, leave the rest of the real room pixel-identical.
+    // Earlier this prompt had no framing discipline, so Gemini restaged the whole room
+    // (new rug, relit, decluttered) — a regression for a "see it in YOUR room" product.
+    // Now it carries the same pixel-lock language + FRAMING MASTER as the main place path.
     const swapPrompt =
-      `You are editing a photo of a room. Replace one piece of furniture with a different one.\n\n` +
-      `NEW ${productLabel} REFERENCE (${productSlot}): photos of the new ${productLabel.toLowerCase()} to put into the room.\n` +
+      `You are a precise photo editor. In the room photo you will SWAP one piece of furniture for a different one and change NOTHING else.\n\n` +
+      `BACKGROUND (first image): the room exactly as photographed. It currently contains the old ${eraseLabel}.\n\n` +
+      `NEW ${productLabel} REFERENCE (${productSlot}): photos of the new ${productLabel.toLowerCase()} to put in.\n` +
       (productDescription ? `Product details: ${productDescription}\n` : ``) +
-      `Instructions:\n` +
-      `1. Completely remove the existing ${eraseLabel} currently in the room — every part of it, including any corner, chaise, or extension modules, and any cushions, pillows, blankets or bags resting on it.\n` +
-      `2. In that same spot, add the NEW ${productLabel.toLowerCase()} from the REFERENCE. Match its shape, colour, material, texture and proportions exactly — do not redesign it.${dimNote}${scaleNote}\n` +
-      `3. Keep EVERYTHING else in the room identical — walls, floor, windows, curtains, the coffee table and any side tables, lamps, plants, rugs and decor, and the exact camera framing. Do not move or delete any of them.\n` +
-      `4. Render the new ${productLabel.toLowerCase()} from the room's own camera angle, resting firmly on the floor with realistic contact shadows and lighting matched to the room.${perspNote}\n` +
+      `FRAMING MASTER (${framingSlot}): the same room again. Your output MUST match it pixel-for-pixel EVERYWHERE except the single ${eraseLabel} being swapped.\n\n` +
+      `This is a precise technical edit, NOT a creative re-render. Do NOT restage, redecorate, declutter, recompose, crop, zoom, pan, rotate, or relight the room. Treat every pixel as locked except the ${eraseLabel} region.\n\n` +
+      `Steps:\n` +
+      `1. Remove the existing ${eraseLabel} completely — every section, including any corner, chaise or extension modules and any cushions, pillows, throws or bags resting on it.\n` +
+      `2. In that exact spot put the NEW ${productLabel.toLowerCase()} from the REFERENCE — matching its shape, colour, material, texture and proportions exactly.${dimNote}${scaleNote} Render it from the room's own camera angle, resting firmly on the floor with realistic contact shadows and lighting matched to the room.${perspNote}\n` +
+      `3. EVERYTHING else stays pixel-identical to the FRAMING MASTER: the same walls, floor, windows, curtains, rug, coffee table and side tables, lamps, plants, clock, wall art, the bouquet, the items on the table, and the exact same camera framing. Do not add, remove, move, restyle or relight any of them.\n` +
       `Output only the edited image. No text.`;
     const swapParts: unknown[] = [
       { text: swapPrompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // original room (clean reference)
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // BACKGROUND = original room
       ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // FRAMING MASTER = original room
     ];
     for (let attempt = 1; attempt <= 2; attempt++) {
       const swapRaw  = await callGemini(swapParts);
