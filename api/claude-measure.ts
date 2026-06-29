@@ -41,16 +41,21 @@ Also analyze the camera perspective:
   70 = steep downward angle, 90 = straight down). Use reference objects and visible floor area to estimate.
 
 Also identify up to 3 pieces of furniture clearly visible in the room and estimate their
-real-world heights. Use standard dimensions as a guide:
-- TV stand / media console (low cabinet under a TV or screen): 40–60cm — IMPORTANT: if you can see a TV or monitor above a cabinet, classify it as a TV stand, NOT a dresser
-- Dresser / sideboard (tall cabinet without a TV above it): 75–100cm
-- Bed to top of mattress: 55–65cm; to top of headboard: 90–130cm
-- Bookshelf / wardrobe: 150–200cm
-- Nightstand / bedside table: 55–70cm
-- Sofa back: 80–95cm; chair back: 80–100cm
-- Coffee table: 40–50cm; dining table: 72–80cm
-Return as "visible_refs": [{"name": "TV stand under the TV on left wall", "height_cm": 50}, ...]
-Up to 3 items. Empty array if nothing is clearly identifiable.
+real-world HEIGHT and WIDTH (the widest horizontal side, in cm). These are size anchors used
+to scale newly-placed furniture, so a large fully-visible object like a sofa is the most
+valuable — list it first. Use standard dimensions as a guide:
+- TV stand / media console (low cabinet under a TV or screen): height 40–60cm, width 100–180cm — IMPORTANT: if you can see a TV or monitor above a cabinet, classify it as a TV stand, NOT a dresser
+- Dresser / sideboard (tall cabinet without a TV above it): height 75–100cm, width 80–160cm
+- Bed to top of mattress: height 55–65cm; to top of headboard: 90–130cm; width 140–180cm
+- Bookshelf / wardrobe: height 150–200cm, width 80–150cm
+- Nightstand / bedside table: height 55–70cm, width 40–55cm
+- Sofa: back height 80–95cm; width — 2-seat ~150–180cm, 3-seat ~200–240cm, corner/sectional 240–340cm
+- Armchair: height 80–100cm, width 80–100cm
+- Coffee table: height 40–50cm, width 100–130cm; dining table: height 72–80cm, width 120–180cm
+Estimate width_cm only where it is meaningful (sofa, bed, table, sideboard, rug, TV stand);
+use null for tall/narrow items where width is not a useful anchor.
+Return as "visible_refs": [{"name": "grey 3-seat sofa on left wall", "height_cm": 85, "width_cm": 220}, ...]
+Up to 3 items, prioritising the largest clearly-visible object. Empty array if nothing is clearly identifiable.
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
@@ -63,7 +68,7 @@ Return ONLY valid JSON (no markdown fences, no extra text):
   "horizon_pct": <0-100 integer or null>,
   "camera_angle": "looking_down" | "level" | "looking_up" | null,
   "camera_tilt_deg": <0-90 integer or null>,
-  "visible_refs": [{"name": "...", "height_cm": <integer>}]
+  "visible_refs": [{"name": "...", "height_cm": <integer>, "width_cm": <integer or null>}]
 }
 Confidence: high=door/window clearly visible, medium=multiple reference objects, low=minimal references.`;
 

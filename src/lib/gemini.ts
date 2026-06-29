@@ -302,7 +302,7 @@ export interface RoomMeasurement {
   horizon_pct:        number | null;
   camera_angle:       "looking_down" | "level" | "looking_up" | null;
   camera_tilt_deg:    number | null;  // degrees camera looks down from horizontal (0=level, 90=straight down)
-  visible_refs:       Array<{ name: string; height_cm: number }>;  // visible furniture with estimated heights
+  visible_refs:       Array<{ name: string; height_cm: number; width_cm?: number }>;  // visible furniture with estimated height + width (width = footprint yardstick)
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -402,9 +402,26 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
   const anchors: string[] = [];
 
   // Footprint anchor — the dominant scale cue for low/wide furniture (tables, beds, sofas).
+  // Prefer a specific visible object (above all the sofa) as the yardstick: anchoring to a
+  // real, known-width object in frame is far more reliable than an abstract floor-width
+  // estimate. Confirmed in testing — scale is most accurate when a full sofa is visible to
+  // compare against; the floor-width fallback is noisier from cluttered head-on angles.
   if (footprint) {
+    const widthRefs = (m?.visible_refs ?? []).filter(
+      (r): r is { name: string; height_cm: number; width_cm: number } =>
+        typeof r.width_cm === "number" && r.width_cm > 0,
+    );
+    const anchorObj = widthRefs.length
+      ? widthRefs.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // most prominent (widest) object
+      : null;
     const floorW = (m && m.confidence !== "low") ? m.floor_width_cm : null;
-    if (floorW) {
+    if (anchorObj) {
+      const pct = Math.round((footprint / anchorObj.width_cm) * 100);
+      anchors.push(
+        `its longest side measures ${footprint}cm — about ${pct}% as wide as the ${anchorObj.name} ` +
+        `visible in the room (~${anchorObj.width_cm}cm wide); use that object as your size yardstick`,
+      );
+    } else if (floorW) {
       const pct = Math.round((footprint / floorW) * 100);
       anchors.push(
         `its longest side measures ${footprint}cm — about ${pct}% of the visible floor width ` +
