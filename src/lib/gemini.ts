@@ -302,7 +302,7 @@ export interface RoomMeasurement {
   horizon_pct:        number | null;
   camera_angle:       "looking_down" | "level" | "looking_up" | null;
   camera_tilt_deg:    number | null;  // degrees camera looks down from horizontal (0=level, 90=straight down)
-  visible_refs:       Array<{ name: string; height_cm: number; width_cm?: number }>;  // visible furniture with estimated height + width (width = footprint yardstick)
+  visible_refs:       Array<{ name: string; height_cm: number | null; width_cm?: number | null }>;  // visible furniture with estimated height + width (width = footprint yardstick)
 }
 
 /** Calls /api/claude-measure to estimate room dimensions from a photo. */
@@ -408,11 +408,16 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
   // compare against; the floor-width fallback is noisier from cluttered head-on angles.
   if (footprint) {
     const widthRefs = (m?.visible_refs ?? []).filter(
-      (r): r is { name: string; height_cm: number; width_cm: number } =>
+      (r): r is { name: string; height_cm: number | null; width_cm: number } =>
         typeof r.width_cm === "number" && r.width_cm > 0,
     );
-    const anchorObj = widthRefs.length
-      ? widthRefs.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // most prominent (widest) object
+    // A flat rug/carpet is a poor footprint yardstick — the product sits ON it, so Gemini
+    // reads it as floor rather than a discrete object to compare against. Prefer a real 3D
+    // object that has a height (the sofa); only fall back to a flat ref if nothing else.
+    const solidRefs = widthRefs.filter((r) => typeof r.height_cm === "number" && r.height_cm > 0);
+    const pool      = solidRefs.length ? solidRefs : widthRefs;
+    const anchorObj = pool.length
+      ? pool.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // widest among preferred pool
       : null;
     const floorW = (m && m.confidence !== "low") ? m.floor_width_cm : null;
     if (anchorObj) {
@@ -434,7 +439,10 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions): st
 
   // Height anchor — compared to a real object already visible in the room.
   if (height) {
-    const refs = m?.visible_refs ?? [];
+    const refs = (m?.visible_refs ?? []).filter(
+      (r): r is { name: string; height_cm: number; width_cm?: number | null } =>
+        typeof r.height_cm === "number" && r.height_cm > 0,
+    );
     if (refs.length) {
       const best = refs.reduce((a, b) =>
         Math.abs(a.height_cm - height) < Math.abs(b.height_cm - height) ? a : b,
@@ -1240,12 +1248,14 @@ export async function placeInRoom(
     `Do NOT carry over any background from the reference images.\n\n` +
     `FRAMING MASTER (${framingSlot}): The room with the old ${eraseLabel} ALREADY REMOVED — there is an empty floor area where it used to be. This image still shows every OTHER object that must stay (coffee tables, side tables, chairs, lamps, plants, rugs, decor). Use it as (a) a pixel-level framing template — ceiling line, wall edges, artworks, windows and floor boundaries at the identical positions; and (b) the truth for what furniture remains. There is NO old ${eraseLabel} in this image and there must be none in your output — you will add the NEW ${productLabel.toLowerCase()} in that empty area instead.\n\n` +
     `PRIMARY GOAL — DO NOT SKIP: Your output MUST show the new ${productLabel.toLowerCase()} standing in the room. Returning the room with the empty floor area still empty (no ${productLabel.toLowerCase()} added) is a FAILURE. The single most important thing is that the new ${productLabel.toLowerCase()} is clearly, visibly present.\n\n` +
+    `SIZE — JUST AS IMPORTANT AS PLACEMENT:${scaleNote || ` Render the ${productLabel.toLowerCase()} at full, real-world size — furniture of this kind is very often rendered too small. Err larger rather than smaller; never shrink it to fit the frame.`}\n` +
+    `Before finishing, sanity-check the size against the yardstick object above: if the ${productLabel.toLowerCase()} looks small or dainty next to it, it is WRONG — make it bigger.\n\n` +
     `Compositing steps:\n` +
     `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
     `1. Add the new ${productLabel.toLowerCase()} on the floor in the empty area where the old ${eraseLabel} used to be.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} It must be clearly visible — the empty area is filled by the new ${productLabel.toLowerCase()}.\n` +
     `2. Keep the framing identical to the FRAMING MASTER: ceiling, walls, artworks, windows and floor boundaries at the same positions. Do not zoom or recompose.\n` +
     `2b. Preserve every OTHER object exactly as it appears in the FRAMING MASTER — coffee tables, side tables, chairs, lamps, plants, rugs, decor. Never delete or move any of them. The ONLY change to the room is adding the new ${productLabel.toLowerCase()}.\n` +
-    `3. Size it to real-world scale — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object.${scaleNote} If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
+    `3. Size it to real-world scale (per SIZE above) — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object. If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
     `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
     `5. Lighting — study the room carefully before rendering:\n` +
     `   a. Identify every light source: windows (and which wall they're on), ceiling lights, floor lamps. Note which side of objects the shadows fall toward.\n` +
