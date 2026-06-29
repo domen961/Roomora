@@ -37,21 +37,23 @@ export default async function handler(req: any, res: any) {
     `IMAGE 2 is the EDITED result. A successful edit COMPLETELY removes the original ${label} and ` +
     `puts a NEW ${label} of a clearly different colour in its place.\n\n` +
     `Answer two questions about IMAGE 2:\n` +
-    `- old_present: Is a ${label} matching the ORIGINAL's colour and form (from IMAGE 1) still ` +
-    `visible in IMAGE 2, in whole or in large part? Judge by the ${label}'s BODY and FRAME, NOT the ` +
-    `cushions. The MOST COMMON failure leaves the original ${label} essentially in place and only ` +
-    `swaps or adds a few cushions of the new colour — if the original-coloured ${label} body/frame ` +
-    `is still there, old_present is TRUE even if new-coloured cushions are sitting on it.\n` +
-    `- new_present: Is a NEW, full ${label} of a clearly different colour genuinely present — with ` +
-    `its OWN body and frame, not merely new cushions placed on the old one?\n\n` +
+    `A correct result contains EXACTLY ONE ${label}: the new one. Any second ${label} is a failure.\n` +
+    `- old_present: Apart from the single NEW ${label} (the clearly-different-colour replacement), is ` +
+    `there ANY OTHER ${label} visible in IMAGE 2? This covers BOTH (a) the original ${label} left in ` +
+    `place or a large leftover section of it, AND (b) an EXTRA ${label} that does not belong — e.g. an ` +
+    `additional old-/original-coloured ${label} that appears beside the new one but was never part of ` +
+    `it. Judge by the ${label}'s BODY and FRAME, not the cushions. If a second ${label} of any kind is ` +
+    `present, old_present is TRUE. (Common failures: the original left essentially in place with only ` +
+    `cushions swapped; or a second ${label} appearing next to the new one.)\n` +
+    `- new_present: Is the NEW, full ${label} of a clearly different colour genuinely present — with ` +
+    `its OWN body and frame, not merely new cushions placed on an old one?\n\n` +
     `Decision:\n` +
-    `- SUCCESS = old_present:false, new_present:true.\n` +
-    `- FUSION FAILURE = old_present:true (the original ${label}, or most of it, is still there), ` +
+    `- SUCCESS = exactly one ${label} (the new one): old_present:false, new_present:true.\n` +
+    `- FAILURE = old_present:true — the original is still there OR a second/extra ${label} is present, ` +
     `regardless of new_present.\n` +
-    `- Disregard ONLY a single small standalone footstool or pouf cube (roughly one-seat-sized ` +
-    `or smaller). But if a LARGE piece of the original-coloured ${label} remains — a corner ` +
-    `section, chaise, wing, or any seat big enough to function as a sofa or armchair — that IS ` +
-    `the original ${label} still present, so old_present is TRUE.\n\n` +
+    `- Disregard ONLY a single small standalone footstool or pouf cube (roughly one-seat-sized or ` +
+    `smaller). Any larger seat — a corner section, chaise, wing, or anything big enough to function as ` +
+    `a sofa or armchair — counts as a second ${label}, so old_present is TRUE.\n\n` +
     `Return ONLY valid JSON (no markdown, no extra text):\n` +
     `{"old_present": true|false, "new_present": true|false}`;
 
