@@ -588,16 +588,18 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         )}
 
         {photos.length === 2 && (
-          <button
-            type="button"
-            onClick={handleSwapPhotos}
-            disabled={altView0Generating || altView1Generating}
-            title="Swap perspective / front — also regenerates the AI top views"
-            className="self-center flex items-center gap-1.5 h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 active:scale-95 transition disabled:opacity-60"
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            Swap perspective / front
-          </button>
+          <div className="flex w-[204px] justify-center">
+            <button
+              type="button"
+              onClick={handleSwapPhotos}
+              disabled={altView0Generating || altView1Generating}
+              title="Swap perspective / front — also regenerates the AI top views"
+              className="flex items-center gap-1.5 h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 active:scale-95 transition disabled:opacity-60"
+            >
+              <ArrowLeftRight className="h-3.5 w-3.5" />
+              Swap
+            </button>
+          </div>
         )}
 
         <input
