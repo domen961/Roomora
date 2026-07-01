@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import AdminPage from "@/components/admin/AdminPage";
 import LoginPage from "@/pages/LoginPage";
 import TryPage from "@/pages/TryPage";
@@ -19,6 +19,7 @@ export default function App() {
         <Route path="/try/:shopId/:productId" element={<TryPage />} />
         <Route path="/capture/:token"                              element={<CapturePage />} />
         <Route path="/capture/:token/:merchantId/:productId"    element={<CapturePage />} />
+        <Route path="*"                       element={<Navigate to="/" replace />} />
       </Routes>
     </div>
   );
