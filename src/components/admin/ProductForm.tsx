@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
 import { saveProduct, updateProduct } from "@/lib/db";
 import type { Product, FurnitureCategory } from "@/lib/products";
 import { FURNITURE_CATEGORIES } from "@/lib/products";
-import { extractProductData, generateProductAltView } from "@/lib/gemini";
+import { extractProductData, extractProductDataFromHtml, generateProductAltView } from "@/lib/gemini";
 
 interface Props {
   merchantId:      string;
@@ -32,6 +32,10 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [importError,     setImportError]     = useState("");
   const [extractedImages, setExtractedImages] = useState<string[]>([]);
   const [addingImageIdx,  setAddingImageIdx]  = useState<number | null>(null);
+  // Paste-HTML fallback (for Cloudflare-protected sites the server can't fetch)
+  const [showPaste,       setShowPaste]       = useState(false);
+  const [pastedHtml,      setPastedHtml]      = useState("");
+  const [parsingHtml,     setParsingHtml]     = useState(false);
 
   // Photos — pre-filled with the first 2 images only (index 2+ are AI top views)
   const [photos,    setPhotos]    = useState<string[]>(
@@ -87,27 +91,50 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [saveError, setSaveError] = useState("");
 
   const canSave = name.trim().length > 0 && photos.length > 0;
-  const isBusy  = importing || saving || addingImageIdx !== null || altView0Generating || altView1Generating;
+  const isBusy  = importing || parsingHtml || saving || addingImageIdx !== null || altView0Generating || altView1Generating;
 
   // ── URL import ──────────────────────────────────────────────────────────────
+  const applyExtracted = (extracted: Awaited<ReturnType<typeof extractProductData>>) => {
+    if (extracted.name)        setName(extracted.name);
+    if (extracted.description) setDescription(extracted.description);
+    if (extracted.category)    setCategory(extracted.category as FurnitureCategory);
+    if (extracted.length_cm)   setLengthCm(String(extracted.length_cm));
+    if (extracted.width_cm)    setWidthCm(String(extracted.width_cm));
+    if (extracted.height_cm)   setHeightCm(String(extracted.height_cm));
+    if (extracted.imageUrls.length) setExtractedImages(extracted.imageUrls);
+  };
+
   const handleImport = async () => {
     if (!importUrl.trim() || importing) return;
     setImporting(true);
     setImportError("");
     setExtractedImages([]);
     try {
-      const extracted = await extractProductData(importUrl.trim());
-      if (extracted.name)        setName(extracted.name);
-      if (extracted.description) setDescription(extracted.description);
-      if (extracted.category)    setCategory(extracted.category as FurnitureCategory);
-      if (extracted.length_cm)   setLengthCm(String(extracted.length_cm));
-      if (extracted.width_cm)    setWidthCm(String(extracted.width_cm));
-      if (extracted.height_cm)   setHeightCm(String(extracted.height_cm));
-      if (extracted.imageUrls.length) setExtractedImages(extracted.imageUrls);
+      applyExtracted(await extractProductData(importUrl.trim()));
+      setShowPaste(false);
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : String(err));
+      setShowPaste(true);   // offer the paste-HTML fallback on any import failure
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  // Fallback: merchant pastes the page source their own browser loaded past Cloudflare;
+  // we parse it locally with the same extractor. importUrl (already typed) resolves relative
+  // image URLs. Note: image *bytes* behind Cloudflare may still fail — merchant can upload.
+  const handlePasteExtract = async () => {
+    if (!pastedHtml.trim() || parsingHtml) return;
+    setParsingHtml(true);
+    setImportError("");
+    setExtractedImages([]);
+    try {
+      const base = importUrl.trim() || "https://example.com";
+      applyExtracted(await extractProductDataFromHtml(pastedHtml.slice(0, 500_000), base));
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
-      setImporting(false);
+      setParsingHtml(false);
     }
   };
 
@@ -264,6 +291,40 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         </div>
         {importError && (
           <p className="text-xs text-destructive">{importError}</p>
+        )}
+
+        {showPaste && (
+          <div className="flex flex-col gap-2 rounded-md border border-input bg-card/50 p-3 mt-1">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Blocked by the site's anti-bot protection. You can still import it:
+              open the product page in your browser, view its source
+              (<span className="font-medium">Ctrl+U</span>, or right-click →{" "}
+              <span className="font-medium">View Page Source</span>), select all
+              (<span className="font-medium">Ctrl+A</span>), copy, and paste it below.
+            </p>
+            <textarea
+              value={pastedHtml}
+              onChange={(e) => setPastedHtml(e.target.value)}
+              placeholder="Paste the product page source here…"
+              rows={4}
+              disabled={parsingHtml}
+              className="w-full rounded-md border border-input bg-card px-3 py-2 text-xs font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+            />
+            <Button
+              size="sm"
+              onClick={handlePasteExtract}
+              disabled={!pastedHtml.trim() || parsingHtml}
+              className="gap-1.5 self-start"
+            >
+              {parsingHtml
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Reading…</>
+                : <><Sparkles className="h-3.5 w-3.5" />Extract from pasted page</>}
+            </Button>
+            <p className="text-[11px] text-muted-foreground/70">
+              Note: product images hosted behind the same protection may still need to be
+              uploaded by hand — name, description and dimensions will fill in automatically.
+            </p>
+          </div>
         )}
 
         {extractedImages.length > 0 && (

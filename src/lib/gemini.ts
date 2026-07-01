@@ -881,7 +881,20 @@ export async function extractProductData(
     throw new Error(err.error ?? `Scrape failed: ${scrapeRes.status}`);
   }
   const { html } = await scrapeRes.json();
-  const origin   = new URL(pageUrl).origin;
+  return extractProductDataFromHtml(html, pageUrl);
+}
+
+/**
+ * Parses already-fetched product-page HTML into structured product data. Shared by
+ * extractProductData (after a successful scrape) and the paste-HTML fallback, where the
+ * merchant supplies the page source their own browser loaded past Cloudflare protection.
+ * pageUrl is used only to resolve relative image URLs against the site origin.
+ */
+export async function extractProductDataFromHtml(
+  html: string,
+  pageUrl: string,
+): Promise<ExtractedProductData> {
+  const origin = new URL(pageUrl).origin;
 
   // ── Helper: normalise a URL found in HTML ──────────────────────────────────
   const normalise = (u: string): string | null => {
