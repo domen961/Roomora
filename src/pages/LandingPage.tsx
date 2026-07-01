@@ -264,7 +264,11 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="border-t border-border px-6 py-6 flex items-center justify-between">
         <Logo className="h-5 opacity-60" />
-        <span className="text-xs text-muted-foreground">© 2026 Furora</span>
+        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+          <Link to="/privacy" className="hover:text-foreground">Privacy</Link>
+          <Link to="/terms" className="hover:text-foreground">Terms</Link>
+          <span>© 2026 Furora</span>
+        </div>
       </footer>
 
     </div>
