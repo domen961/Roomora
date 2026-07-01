@@ -231,6 +231,29 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     }
   };
 
+  // Swap the perspective/front slots, then regenerate BOTH top views from the new order
+  // (they were synthesised from the old primary photo, so they'd be wrong after a swap).
+  // Pass the swapped array explicitly — setPhotos is async, so `photos` is still stale here.
+  const handleSwapPhotos = () => {
+    if (photos.length !== 2 || generating0Ref.current || generating1Ref.current) return;
+    const swapped = [photos[1], photos[0]];
+    setPhotos(swapped);
+
+    generating0Ref.current = true;
+    setAltView0Generating(true);
+    generateProductAltView(swapped, category || "chair", "perspective")
+      .then(setAltView0)
+      .catch((e) => console.error("Alt view 0 regen failed:", e))
+      .finally(() => { generating0Ref.current = false; setAltView0Generating(false); });
+
+    generating1Ref.current = true;
+    setAltView1Generating(true);
+    generateProductAltView(swapped, category || "chair", "front")
+      .then(setAltView1)
+      .catch((e) => console.error("Alt view 1 regen failed:", e))
+      .finally(() => { generating1Ref.current = false; setAltView1Generating(false); });
+  };
+
   // ── Save ────────────────────────────────────────────────────────────────────
   const handleSave = async () => {
     if (!canSave || isBusy) return;
@@ -545,12 +568,14 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
             {photos.length === 2 && (
               <button
                 type="button"
-                onClick={() => setPhotos((prev) => [prev[1], prev[0]])}
-                aria-label="Swap perspective and front"
-                title="Swap perspective / front"
-                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-background flex items-center justify-center hover:bg-primary/90 active:scale-95 transition"
+                onClick={handleSwapPhotos}
+                disabled={altView0Generating || altView1Generating}
+                aria-label="Swap perspective and front, and regenerate top views"
+                title="Swap perspective / front — also regenerates the AI top views"
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex items-center gap-1 h-8 px-3 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-lg ring-2 ring-background hover:bg-primary/90 active:scale-95 transition disabled:opacity-60"
               >
-                <ArrowLeftRight className="h-4 w-4" />
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                Swap
               </button>
             )}
           </div>
