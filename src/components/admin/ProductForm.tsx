@@ -36,6 +36,10 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [showPaste,       setShowPaste]       = useState(false);
   const [pastedHtml,      setPastedHtml]      = useState("");
   const [parsingHtml,     setParsingHtml]     = useState(false);
+  // Add a product photo from a pasted image URL
+  const [manualImageUrl,   setManualImageUrl]   = useState("");
+  const [addingManualUrl,  setAddingManualUrl]  = useState(false);
+  const [manualImageError, setManualImageError] = useState("");
 
   // Photos — pre-filled with the first 2 images only (index 2+ are AI top views)
   const [photos,    setPhotos]    = useState<string[]>(
@@ -153,6 +157,35 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
       setPhotos((prev) => [...prev, url].slice(0, 2));
     } finally {
       setAddingImageIdx(null);
+    }
+  };
+
+  // Add a product photo from a pasted image URL (right-click a photo → Copy Image Address).
+  // Fetches the raw bytes via the proxy and stores them at full quality — identical to an
+  // uploaded file. If the host blocks the fetch, we surface an error and let the merchant
+  // upload, rather than storing a fragile raw-URL reference that could break the save.
+  const handleAddImageByUrl = async () => {
+    const url = manualImageUrl.trim();
+    if (!url || photos.length >= 2 || addingManualUrl) return;
+    setAddingManualUrl(true);
+    setManualImageError("");
+    try {
+      const proxyRes = await fetch(`/api/scrape?url=${encodeURIComponent(url)}&type=image`);
+      if (!proxyRes.ok) {
+        setManualImageError("Couldn't fetch that image — the host may be blocking it. Download it and upload instead.");
+        return;
+      }
+      const { data, mimeType } = await proxyRes.json();
+      if (!mimeType || !mimeType.startsWith("image/")) {
+        setManualImageError("That link isn't a direct image. Right-click the photo itself → Copy Image Address.");
+        return;
+      }
+      setPhotos((prev) => [...prev, `data:${mimeType};base64,${data}`].slice(0, 2));
+      setManualImageUrl("");
+    } catch {
+      setManualImageError("Couldn't fetch that image. Download it and upload instead.");
+    } finally {
+      setAddingManualUrl(false);
     }
   };
 
@@ -542,6 +575,37 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
             e.target.value = "";
           }}
         />
+
+        {photos.length < 2 && (
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center gap-2">
+              <div className="relative flex-1">
+                <Link className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <input
+                  type="url"
+                  placeholder="…or paste an image URL (right-click photo → Copy Image Address)"
+                  value={manualImageUrl}
+                  onChange={(e) => { setManualImageUrl(e.target.value); setManualImageError(""); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleAddImageByUrl(); } }}
+                  disabled={addingManualUrl}
+                  className="w-full rounded-md border border-input bg-card pl-8 pr-3 py-2 text-xs placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring disabled:opacity-60"
+                />
+              </div>
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={handleAddImageByUrl}
+                disabled={!manualImageUrl.trim() || addingManualUrl}
+                className="gap-1.5 shrink-0"
+              >
+                {addingManualUrl
+                  ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Adding…</>
+                  : <><Plus className="h-3.5 w-3.5" />Add</>}
+              </Button>
+            </div>
+            {manualImageError && <p className="text-xs text-destructive">{manualImageError}</p>}
+          </div>
+        )}
       </div>
 
       {/* ── AI top-down views ── */}
