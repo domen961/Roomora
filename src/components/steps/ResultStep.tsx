@@ -18,7 +18,7 @@ const isMobile =
 export default function ResultStep({ result, productName, onReset, onRegenerate, freeRegenAvailable }: Props) {
   const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
   const regenHint = freeRegenAvailable
-    ? "Not quite right? Your first regeneration is free."
+    ? "Not quite right? Try one more, on us."
     : "Result looks unrealistic? Try again with a new generation.";
 
   const handleDownload = () => {

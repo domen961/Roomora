@@ -275,7 +275,7 @@ export default function CapturePage() {
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
               <p className="text-white/45 text-xs">
                 {regenCountRef.current === 0
-                  ? "Not quite right? Your first regeneration is free."
+                  ? "Not quite right? Try one more, on us."
                   : "Result looks unrealistic? Try again with a new generation."}
               </p>
               <button onClick={() => processPhoto(lastPhoto, true)}
