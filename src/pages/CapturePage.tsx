@@ -55,6 +55,7 @@ export default function CapturePage() {
   const [error,       setError]       = useState("");
   const [resultImage, setResultImage] = useState<string | null>(null);
   const [lastPhoto,   setLastPhoto]   = useState<string>("");
+  const regenCountRef = useRef(0);   // regenerations of the current photo (1st is free)
 
   // ── Camera startup ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -88,20 +89,32 @@ export default function CapturePage() {
   }, [cameraKey, cameraFailed]);
 
   // ── Process a photo (direct mode: call Gemini right here on the phone) ─────
-  const processPhoto = async (photo: string) => {
+  const processPhoto = async (photo: string, isRegen = false) => {
     if (!token) return;
     setLastPhoto(photo);   // store for regenerate
     setPhase("generating");
+
+    // First regeneration of a photo is free; the initial generation and any later
+    // regenerations consume a Gen Point. A new photo resets the free-regen allowance.
+    let charge = true;
+    if (isRegen) {
+      regenCountRef.current += 1;
+      if (regenCountRef.current === 1) charge = false;  // first regen free
+    } else {
+      regenCountRef.current = 0;
+    }
 
     try {
       if (isDirectMode && product) {
         // ── DIRECT MODE: phone runs Gemini itself ────────────────────────────
         // Check Gen Point quota before calling Gemini
-        const quota = await consumeGenPoint(merchantId);
-        if (!quota.ok) {
-          setPhase("error");
-          setError("This store has used all its Gen Points for this period.");
-          return;
+        if (charge) {
+          const quota = await consumeGenPoint(merchantId);
+          if (!quota.ok) {
+            setPhase("error");
+            setError("This store has used all its Gen Points for this period.");
+            return;
+          }
         }
 
         // Use the selected variant's images, or the base product images if index 0
@@ -261,7 +274,7 @@ export default function CapturePage() {
           {lastPhoto && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
               <p className="text-white/45 text-xs">Result looks unrealistic? Try again with a new generation.</p>
-              <button onClick={() => processPhoto(lastPhoto)}
+              <button onClick={() => processPhoto(lastPhoto, true)}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
                 <RefreshCw className="h-4 w-4" />Regenerate
               </button>

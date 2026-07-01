@@ -16,6 +16,7 @@ interface Props {
   onPhotoReady?:          (photo: string) => void;  // fires before processing — lets parent store room photo
   autoProcessPhoto?:      string;                    // if set, auto-process this photo on mount (regenerate)
   productImagesOverride?: string[];                  // when a variant is selected, use these images instead of product.images
+  skipQuota?:             boolean;                   // true for the first (free) regeneration — don't consume a Gen Point
 }
 
 const isMobile =
@@ -25,7 +26,7 @@ const isMobile =
 
 type Phase = "idle" | "processing" | "error";
 
-export default function RoomStep({ product, merchantId, onResult, onBack, onPhotoReady, autoProcessPhoto, productImagesOverride }: Props) {
+export default function RoomStep({ product, merchantId, onResult, onBack, onPhotoReady, autoProcessPhoto, productImagesOverride, skipQuota }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -123,12 +124,15 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
       onPhotoReady?.(roomPhoto);   // notify parent so it can store photo for regenerate
       setPhase("processing");
       try {
-        // Check Gen Point quota before calling Gemini (fails open on server errors)
-        const quota = await consumeGenPoint(merchantId);
-        if (!quota.ok) {
-          setErrorMsg("You've used all your Gen Points for this period. Please upgrade your plan to continue generating.");
-          setPhase("error");
-          return;
+        // Check Gen Point quota before calling Gemini (fails open on server errors).
+        // The first regeneration of a room photo is free — skipQuota is set by the parent.
+        if (!skipQuota) {
+          const quota = await consumeGenPoint(merchantId);
+          if (!quota.ok) {
+            setErrorMsg("You've used all your Gen Points for this period. Please upgrade your plan to continue generating.");
+            setPhase("error");
+            return;
+          }
         }
 
         const activeImages = productImagesOverride ?? product.images;
@@ -160,7 +164,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         setPhase("error");
       }
     },
-    [product, onResult]
+    [product, onResult, skipQuota, merchantId, productImagesOverride]
   );
 
   const handleCapture = useCallback(() => {

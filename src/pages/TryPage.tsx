@@ -17,6 +17,7 @@ export default function TryPage() {
   const [error,         setError]         = useState("");
   const [lastRoomPhoto, setLastRoomPhoto] = useState<string>("");
   const [regenerating,  setRegenerating]  = useState(false);
+  const [regenCount,    setRegenCount]    = useState(0);   // regenerations of the current photo (1st is free)
 
   // Auto-resize the embed iframe by reporting content height to parent window
   useEffect(() => {
@@ -84,8 +85,8 @@ export default function TryPage() {
       <ResultStep
         result={result}
         productName={product.name}
-        onReset={() => { setResult(null); setLastRoomPhoto(""); setRegenerating(false); setPhase("room"); }}
-        onRegenerate={lastRoomPhoto ? () => { setResult(null); setRegenerating(true); setPhase("room"); } : undefined}
+        onReset={() => { setResult(null); setLastRoomPhoto(""); setRegenerating(false); setRegenCount(0); setPhase("room"); }}
+        onRegenerate={lastRoomPhoto ? () => { setResult(null); setRegenerating(true); setRegenCount((c) => c + 1); setPhase("room"); } : undefined}
       />
     );
   }
@@ -97,6 +98,7 @@ export default function TryPage() {
         merchantId={shopId!}
         onPhotoReady={(photo) => setLastRoomPhoto(photo)}
         autoProcessPhoto={regenerating ? lastRoomPhoto : undefined}
+        skipQuota={regenerating && regenCount === 1}   // 1st regeneration is free
         onResult={(r) => { setRegenerating(false); setResult(r); setPhase("result"); }}
         onBack={handleClose}
       />
