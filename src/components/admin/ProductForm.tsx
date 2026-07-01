@@ -513,7 +513,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         </div>
 
         {photos.length > 0 ? (
-          <div className="flex gap-3">
+          <div className="relative flex gap-3">
             {photos.map((src, i) => (
               <div key={i} className="relative group">
                 <img
@@ -542,6 +542,17 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
                 <span className="text-xs">Add</span>
               </button>
             )}
+            {photos.length === 2 && (
+              <button
+                type="button"
+                onClick={() => setPhotos((prev) => [prev[1], prev[0]])}
+                aria-label="Swap perspective and front"
+                title="Swap perspective / front"
+                className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 h-9 w-9 rounded-full bg-primary text-primary-foreground shadow-lg ring-2 ring-background flex items-center justify-center hover:bg-primary/90 active:scale-95 transition"
+              >
+                <ArrowLeftRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         ) : (
           <div
@@ -562,17 +573,6 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
               <p className="text-xs text-muted-foreground mt-1">JPG, PNG, WEBP — up to 2 images</p>
             </div>
           </div>
-        )}
-
-        {photos.length === 2 && (
-          <button
-            type="button"
-            onClick={() => setPhotos((prev) => [prev[1], prev[0]])}
-            className="self-start flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeftRight className="h-3.5 w-3.5" />
-            Swap perspective / front
-          </button>
         )}
 
         <input
