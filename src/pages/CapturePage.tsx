@@ -321,7 +321,7 @@ export default function CapturePage() {
         <div>
           <h1 className="text-2xl font-light text-primary mb-2">Photograph your room</h1>
           <p className="text-sm text-muted-foreground max-w-xs">
-            Point at the spot where you'd like to place the furniture
+            Point where you'd like the furniture. Any existing piece of the same type is replaced automatically — no need to clear the room first.
           </p>
         </div>
         <button
@@ -367,7 +367,7 @@ export default function CapturePage() {
                 Photograph your room
               </h1>
               <p className="text-sm text-white/70 mt-1 max-w-xs">
-                Point at the spot where you'd like to place the furniture
+                Point where you'd like the furniture. Any existing piece of the same type is replaced automatically — no need to clear the room first.
               </p>
             </div>
           </div>
