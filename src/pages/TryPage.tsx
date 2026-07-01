@@ -85,6 +85,7 @@ export default function TryPage() {
       <ResultStep
         result={result}
         productName={product.name}
+        freeRegenAvailable={regenCount === 0}
         onReset={() => { setResult(null); setLastRoomPhoto(""); setRegenerating(false); setRegenCount(0); setPhase("room"); }}
         onRegenerate={lastRoomPhoto ? () => { setResult(null); setRegenerating(true); setRegenCount((c) => c + 1); setPhase("room"); } : undefined}
       />

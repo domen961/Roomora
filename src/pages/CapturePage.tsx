@@ -273,7 +273,11 @@ export default function CapturePage() {
           {/* Regenerate — separated with hint */}
           {lastPhoto && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
-              <p className="text-white/45 text-xs">Result looks unrealistic? Try again with a new generation.</p>
+              <p className="text-white/45 text-xs">
+                {regenCountRef.current === 0
+                  ? "Not quite right? Your first regeneration is free."
+                  : "Result looks unrealistic? Try again with a new generation."}
+              </p>
               <button onClick={() => processPhoto(lastPhoto, true)}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
                 <RefreshCw className="h-4 w-4" />Regenerate

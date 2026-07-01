@@ -3,10 +3,11 @@ import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 
 interface Props {
-  result:        string;
-  productName:   string;
-  onReset:       () => void;
-  onRegenerate?: () => void;  // re-run Gemini with the same room photo
+  result:             string;
+  productName:        string;
+  onReset:            () => void;
+  onRegenerate?:      () => void;  // re-run Gemini with the same room photo
+  freeRegenAvailable?: boolean;    // true until the one free regeneration is used
 }
 
 const isMobile =
@@ -14,8 +15,11 @@ const isMobile =
   (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-export default function ResultStep({ result, productName, onReset, onRegenerate }: Props) {
+export default function ResultStep({ result, productName, onReset, onRegenerate, freeRegenAvailable }: Props) {
   const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
+  const regenHint = freeRegenAvailable
+    ? "Not quite right? Your first regeneration is free."
+    : "Result looks unrealistic? Try again with a new generation.";
 
   const handleDownload = () => {
     const a = document.createElement("a");
@@ -72,7 +76,7 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
           {/* Regenerate — separated with hint */}
           {onRegenerate && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
-              <p className="text-white/45 text-xs">Result looks unrealistic? Try again with a new generation.</p>
+              <p className="text-white/45 text-xs">{regenHint}</p>
               <button onClick={onRegenerate}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
                 <RefreshCw className="h-4 w-4" />Regenerate
@@ -127,7 +131,7 @@ export default function ResultStep({ result, productName, onReset, onRegenerate 
         {/* Regenerate — separated with hint */}
         {onRegenerate && (
           <div className="flex flex-col items-center gap-2 pt-1 border-t border-border">
-            <p className="text-xs text-muted-foreground">Result looks unrealistic? Try again with a new generation.</p>
+            <p className="text-xs text-muted-foreground">{regenHint}</p>
             <Button variant="outline" size="sm" onClick={onRegenerate} className="gap-2">
               <RefreshCw className="h-3.5 w-3.5" />
               Regenerate
