@@ -1,4 +1,5 @@
 import { Routes, Route, Navigate } from "react-router-dom";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import AdminPage from "@/components/admin/AdminPage";
 import LoginPage from "@/pages/LoginPage";
 import TryPage from "@/pages/TryPage";
@@ -10,6 +11,7 @@ import TermsPage from "@/pages/TermsPage";
 export default function App() {
   return (
     <div className="min-h-screen bg-background text-foreground">
+      <ErrorBoundary>
       <Routes>
         <Route path="/"                       element={<LandingPage />} />
         <Route path="/privacy"                element={<PrivacyPage />} />
@@ -21,6 +23,7 @@ export default function App() {
         <Route path="/capture/:token/:merchantId/:productId"    element={<CapturePage />} />
         <Route path="*"                       element={<Navigate to="/" replace />} />
       </Routes>
+      </ErrorBoundary>
     </div>
   );
 }

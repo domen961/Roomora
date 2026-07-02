@@ -5,10 +5,10 @@ import Logo from "@/components/Logo";
  * TEMPLATE — fill in the bracketed details below, then have a lawyer review
  * before public launch. Tailored to how Furora works; not legal advice.
  * ────────────────────────────────────────────────────────────────────────── */
-const COMPANY  = "[COMPANY LEGAL NAME]";
-const ADDRESS  = "[BUSINESS ADDRESS]";
-const EMAIL    = "[CONTACT EMAIL]";
-const COUNTRY  = "[COUNTRY]";           // e.g. "Poland"
+const COMPANY  = "DOMINIK MASOŃ 3D.Art";
+const ADDRESS  = "Ligonia 13, 42-283 Boronów, Poland";
+const EMAIL    = "dominik.mason96@gmail.com";   // TODO: swap to a business email before public launch
+const COUNTRY  = "Poland";
 const UPDATED  = "1 July 2026";
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
