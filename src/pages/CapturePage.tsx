@@ -5,6 +5,7 @@ import { supabase } from "@/lib/supabase";
 import { getProducts, getVariants, type ProductVariant } from "@/lib/db";
 import { placeInRoom } from "@/lib/gemini";
 import { consumeGenPoint } from "@/lib/quota";
+import { t } from "@/lib/i18n";
 import Logo from "@/components/Logo";
 import VariantPicker from "@/components/VariantPicker";
 import type { Product } from "@/lib/products";
@@ -112,7 +113,7 @@ export default function CapturePage() {
           const quota = await consumeGenPoint(merchantId);
           if (!quota.ok) {
             setPhase("error");
-            setError("This store has used all its Gen Points for this period.");
+            setError(t("storeQuotaExhausted"));
             return;
           }
         }
@@ -230,7 +231,7 @@ export default function CapturePage() {
         const blob = await res.blob();
         const file = new File([blob], filename, { type: "image/jpeg" });
         if (navigator.canShare?.({ files: [file] })) {
-          await navigator.share({ files: [file], title: product?.name ? `${product.name} in your room` : "Your room" });
+          await navigator.share({ files: [file], title: product?.name ? `${product.name} ${t("inYourRoom")}` : t("heresRoom") });
         } else {
           const a = document.createElement("a"); a.href = resultImage; a.download = filename; a.click();
         }
@@ -252,12 +253,12 @@ export default function CapturePage() {
           </button>
         </div>
         <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-3 px-6">
-          <p className="text-white/80 text-sm font-light">Here's your room ✨</p>
+          <p className="text-white/80 text-sm font-light">{t("heresRoom")}</p>
           {/* Primary actions: Retry + Download */}
           <div className="flex gap-3 w-full max-w-xs">
             <button onClick={handleRetry}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
-              <RotateCcw className="h-4 w-4" />Retry
+              <RotateCcw className="h-4 w-4" />{t("retry")}
             </button>
             <button
               onClick={() => {
@@ -267,20 +268,18 @@ export default function CapturePage() {
                 a.click();
               }}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
-              <Download className="h-4 w-4" />Download
+              <Download className="h-4 w-4" />{t("download")}
             </button>
           </div>
           {/* Regenerate — separated with hint */}
           {lastPhoto && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
               <p className="text-white/45 text-xs">
-                {regenCountRef.current === 0
-                  ? "Not quite right? Try one more, on us."
-                  : "Result looks unrealistic? Try again with a new generation."}
+                {regenCountRef.current === 0 ? t("regenFree") : t("regenAgain")}
               </p>
               <button onClick={() => processPhoto(lastPhoto, true)}
                 className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
-                <RefreshCw className="h-4 w-4" />Regenerate
+                <RefreshCw className="h-4 w-4" />{t("regenerate")}
               </button>
             </div>
           )}
@@ -299,10 +298,10 @@ export default function CapturePage() {
         <Loader2 className="h-14 w-14 animate-spin text-primary" />
         <div>
           <p className="text-base font-medium text-foreground">
-            {isDirectMode ? "Placing the product in your room…" : "Sending photo…"}
+            {isDirectMode ? t("placingProduct") : t("sendingPhoto")}
           </p>
           <p className="text-sm text-muted-foreground mt-1">
-            {isDirectMode ? "Usually 20–30 seconds" : "Uploading to server"}
+            {isDirectMode ? t("usually2030") : t("uploadingServer")}
           </p>
         </div>
       </div>
@@ -322,7 +321,7 @@ export default function CapturePage() {
           onClick={() => { setPhase("idle"); setError(""); setCameraKey((k) => k + 1); }}
           className="text-xs text-muted-foreground hover:text-foreground underline"
         >
-          Try again
+          {t("tryAgain")}
         </button>
       </div>
     );
@@ -336,9 +335,9 @@ export default function CapturePage() {
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-10 px-6 text-center">
         <Logo />
         <div>
-          <h1 className="text-2xl font-light text-primary mb-2">Photograph your room</h1>
+          <h1 className="text-2xl font-light text-primary mb-2">{t("photographRoom")}</h1>
           <p className="text-sm text-muted-foreground max-w-xs">
-            Point where you'd like the furniture. Any existing piece of the same type is replaced automatically — no need to clear the room first.
+            {t("pointHint")}
           </p>
         </div>
         <button
@@ -349,7 +348,7 @@ export default function CapturePage() {
         </button>
         <input ref={fallbackInputRef} type="file" accept="image/*" capture="environment"
           className="hidden" onChange={handleFile} />
-        <p className="text-xs text-muted-foreground">Natural lighting gives the best results</p>
+        <p className="text-xs text-muted-foreground">{t("naturalLight")}</p>
       </div>
     );
   }
@@ -381,10 +380,10 @@ export default function CapturePage() {
             <div>
               <h1 className="text-2xl font-light text-primary"
                 style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
-                Photograph your room
+                {t("photographRoom")}
               </h1>
               <p className="text-sm text-white/70 mt-1 max-w-xs">
-                Point where you'd like the furniture. Any existing piece of the same type is replaced automatically — no need to clear the room first.
+                {t("pointHint")}
               </p>
             </div>
           </div>
@@ -412,7 +411,7 @@ export default function CapturePage() {
                 <div className="w-14 h-14" />
               )}
             </div>
-            <p className="text-xs text-white/50">Natural lighting gives the best results</p>
+            <p className="text-xs text-white/50">{t("naturalLight")}</p>
           </div>
         </div>
       )}

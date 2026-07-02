@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { placeInRoom } from "@/lib/gemini";
 import { consumeGenPoint } from "@/lib/quota";
 import { supabase } from "@/lib/supabase";
+import { t } from "@/lib/i18n";
 import Logo from "@/components/Logo";
 
 interface Props {
@@ -129,7 +130,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         if (!skipQuota) {
           const quota = await consumeGenPoint(merchantId);
           if (!quota.ok) {
-            setErrorMsg("You've used all your Gen Points for this period. Please upgrade your plan to continue generating.");
+            setErrorMsg(t("quotaExhausted"));
             setPhase("error");
             return;
           }
@@ -199,8 +200,8 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         <Logo />
         <Loader2 className="h-14 w-14 animate-spin text-primary" />
         <div>
-          <p className="text-base font-medium text-foreground">Placing the product in your room…</p>
-          <p className="text-sm text-muted-foreground mt-1">Usually 20–30 seconds</p>
+          <p className="text-base font-medium text-foreground">{t("placingProduct")}</p>
+          <p className="text-sm text-muted-foreground mt-1">{t("usually2030")}</p>
         </div>
       </div>
     );
@@ -210,14 +211,14 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
   if (phase === "error") {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center gap-5 px-6 text-center">
-        <p className="font-serif text-xl text-primary">Something went wrong</p>
+        <p className="font-serif text-xl text-primary">{t("somethingWrong")}</p>
         <p className="text-sm text-destructive max-w-xs">{errorMsg}</p>
         <div className="flex gap-3">
           <Button variant="outline" onClick={() => { setPhase("idle"); setErrorMsg(""); }}>
-            Try again
+            {t("tryAgain")}
           </Button>
           <Button variant="ghost" onClick={onBack}>
-            <ArrowLeft className="h-4 w-4 mr-1" />Back
+            <ArrowLeft className="h-4 w-4 mr-1" />{t("back")}
           </Button>
         </div>
       </div>
@@ -250,10 +251,10 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
               <div>
                 <h1 className="text-2xl font-light text-primary"
                   style={{ textShadow: "0 1px 4px rgba(0,0,0,0.6)" }}>
-                  Photograph your room
+                  {t("photographRoom")}
                 </h1>
                 <p className="text-sm text-white/70 mt-1 max-w-xs">
-                  Point at the spot where you'd like to place the furniture
+                  {t("pointHint")}
                 </p>
               </div>
             </div>
@@ -277,7 +278,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
                 </button>
                 <div className="w-14 h-14" />
               </div>
-              <p className="text-xs text-white/50">Natural lighting gives the best results</p>
+              <p className="text-xs text-white/50">{t("naturalLight")}</p>
             </div>
           </div>
         )}
@@ -296,7 +297,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
           className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
-          Back
+          {t("back")}
         </button>
         <Logo />
         <StepIndicator current={2} />
@@ -304,9 +305,9 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
 
       <main className="max-w-md mx-auto w-full px-6 py-5 flex flex-col gap-5 items-center text-center">
         <div>
-          <h1 className="text-2xl text-primary mb-0.5">Photograph your room</h1>
+          <h1 className="text-2xl text-primary mb-0.5">{t("photographRoom")}</h1>
           <p className="text-sm text-muted-foreground">
-            Use your phone — just scan the code below
+            {t("usePhoneScan")}
           </p>
         </div>
 
@@ -314,7 +315,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         <div className="flex flex-col items-center gap-3">
           {qrDataUrl ? (
             <div className="p-3 rounded-2xl bg-[#1c1c1c] border border-border shadow-lg">
-              <img src={qrDataUrl} alt="Scan to open camera on phone" width={248} height={248} />
+              <img src={qrDataUrl} alt={t("scanToOpen")} width={248} height={248} />
             </div>
           ) : (
             <div className="w-[272px] h-[272px] rounded-2xl bg-secondary animate-pulse" />
@@ -323,13 +324,13 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
           <div className="flex flex-col items-center gap-1">
             {phoneStatus === "received" ? (
               <p className="text-sm text-primary flex items-center gap-1.5 font-medium">
-                <Check className="h-4 w-4" /> Photo received — processing…
+                <Check className="h-4 w-4" /> {t("photoReceived")}
               </p>
             ) : (
               <>
                 <p className="text-sm font-medium flex items-center gap-1.5">
                   <Smartphone className="h-4 w-4 text-primary" />
-                  Scan with your phone
+                  {t("scanWithPhone")}
                 </p>
                 {isLocalhost ? (
                   <p className="text-xs text-amber-500 max-w-[240px]">
@@ -338,7 +339,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
                     <code className="font-mono">localhost</code>
                   </p>
                 ) : (
-                  <p className="text-xs text-muted-foreground">Opens the camera directly on your device</p>
+                  <p className="text-xs text-muted-foreground">{t("opensCamera")}</p>
                 )}
               </>
             )}
@@ -348,7 +349,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
         {/* ── Divider ── */}
         <div className="flex items-center gap-3 w-full">
           <div className="flex-1 h-px bg-border" />
-          <span className="text-xs text-muted-foreground">or upload from this device</span>
+          <span className="text-xs text-muted-foreground">{t("orUpload")}</span>
           <div className="flex-1 h-px bg-border" />
         </div>
 
@@ -364,8 +365,8 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
             <ImageIcon className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
           </div>
           <div>
-            <p className="text-sm font-medium text-foreground">Upload a room photo</p>
-            <p className="text-xs text-muted-foreground">JPG or PNG — natural lighting works best</p>
+            <p className="text-sm font-medium text-foreground">{t("uploadRoomPhoto")}</p>
+            <p className="text-xs text-muted-foreground">{t("jpgPng")}</p>
           </div>
         </button>
 

@@ -4,6 +4,7 @@ import { Loader2 } from "lucide-react";
 import RoomStep from "@/components/steps/RoomStep";
 import ResultStep from "@/components/steps/ResultStep";
 import { getProducts } from "@/lib/db";
+import { t } from "@/lib/i18n";
 import type { Product } from "@/lib/products";
 
 type Phase = "loading" | "room" | "result" | "error";
@@ -73,9 +74,9 @@ export default function TryPage() {
   if (phase === "error") {
     return (
       <div className="h-64 flex flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="font-serif text-xl text-primary">Oops</p>
+        <p className="font-serif text-xl text-primary">{t("oops")}</p>
         <p className="text-sm text-muted-foreground max-w-xs">{error}</p>
-        <button onClick={handleClose} className="text-xs text-muted-foreground underline">Close</button>
+        <button onClick={handleClose} className="text-xs text-muted-foreground underline">{t("close")}</button>
       </div>
     );
   }

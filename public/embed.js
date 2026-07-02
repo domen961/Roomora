@@ -7,6 +7,14 @@
   const origin  = script.src.replace(/\/embed\.js.*$/, "");
   if (!shopId) { console.warn("[Furora] Missing data-shop attribute on embed script."); return; }
 
+  // Shopper language — Polish browsers get Polish, everyone else English (matches the app).
+  // Optional override: <script ... data-lang="pl"> or "en".
+  var LANG = (script.dataset.lang || navigator.language || "").toLowerCase().indexOf("pl") === 0 ? "pl" : "en";
+  var TXT = {
+    en: { button: "Place this furniture in your room", poweredBy: "Powered by " },
+    pl: { button: "Zobacz ten mebel w swoim pokoju",    poweredBy: "Obsługiwane przez " }
+  }[LANG];
+
   // Magic wand icon (Lucide wand-2)
   const WAND_SVG = '<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink:0;vertical-align:middle;margin-top:-1px"><path d="m21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72Z"/><path d="m14 7 3 3"/><path d="M5 6v4"/><path d="M19 14v4"/><path d="M10 2v2"/><path d="M7 8H3"/><path d="M21 16h-4"/><path d="M11 3H9"/></svg>';
 
@@ -88,7 +96,7 @@
       el.dataset.furoraWired = "1";
 
       // Clean button: wand icon + action text only
-      el.innerHTML = WAND_SVG + '<span style="color:#1a1a1a;font-weight:600">Place this furniture in your room</span>';
+      el.innerHTML = WAND_SVG + '<span style="color:#1a1a1a;font-weight:600">' + TXT.button + '</span>';
 
       el.addEventListener("click", function (e) {
         e.preventDefault();
@@ -102,7 +110,7 @@
         a.href = origin;
         a.target = "_blank";
         a.rel = "noopener noreferrer";
-        a.appendChild(document.createTextNode("Powered by "));
+        a.appendChild(document.createTextNode(TXT.poweredBy));
         var img = document.createElement("img");
         img.src = origin + "/logo.svg";
         img.height = 13;
