@@ -321,69 +321,6 @@ async function measureRoom(roomDataUrl: string): Promise<RoomMeasurement | null>
   }
 }
 
-/**
- * Calls /api/claude-verify to check a placement result for fusion (the old furniture
- * left in alongside the new one) — something pixel-diff cannot detect. Returns null on
- * any failure, which the caller treats as "clean" so a verifier outage never blocks output.
- */
-async function verifyPlacement(
-  resultDataUrl:   string,
-  originalDataUrl: string,
-  targetLabel:     string,
-): Promise<{ old_present: boolean; new_present: boolean } | null> {
-  try {
-    const res = await fetch("/api/claude-verify", {
-      method:  "POST",
-      headers: { "Content-Type": "application/json" },
-      body:    JSON.stringify({ resultDataUrl, originalDataUrl, targetLabel }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    if (!data || typeof data.old_present !== "boolean") return null;
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Converts a RoomMeasurement into a short sentence appended to instruction 2.
- * Returns "" for null or low-confidence measurements.
- */
-function buildRoomNote(m: RoomMeasurement | null): string {
-  if (!m || m.confidence === "low") return "";
-  const parts: string[] = [];
-  if (m.ceiling_height_cm) parts.push(`ceiling ~${m.ceiling_height_cm}cm tall`);
-  if (m.floor_width_cm)    parts.push(`visible floor ~${m.floor_width_cm}cm wide`);
-  if (!parts.length) return "";
-  return ` Room scale context: ${parts.join(", ")}.`;
-}
-
-function buildPerspectiveNote(m: RoomMeasurement | null): string {
-  if (!m || m.confidence === "low") return "";
-  const parts: string[] = [];
-  if (m.camera_height_cm)
-    parts.push(`camera is at ~${m.camera_height_cm}cm from the floor`);
-  if (m.camera_tilt_deg !== null && m.camera_tilt_deg > 5) {
-    const desc = m.camera_tilt_deg < 20 ? "nearly level"
-               : m.camera_tilt_deg < 35 ? "mild downward tilt"
-               : m.camera_tilt_deg < 55 ? "strong downward tilt"
-               : "very steep downward angle";
-    parts.push(`camera looks down at ~${m.camera_tilt_deg}° from horizontal (${desc}) — the furniture's top surface and the top of the backrest are visible; show them accordingly`);
-  } else if (m.camera_angle === "looking_down") {
-    parts.push("camera tilts downward — more of the furniture top surface is visible");
-  } else if (m.camera_angle === "looking_up") {
-    parts.push("camera tilts upward — furniture top surface is mostly hidden");
-  }
-  if (m.horizon_pct !== null) {
-    const pos = m.horizon_pct < 35 ? "high in the frame"
-               : m.horizon_pct > 65 ? "low in the frame"
-               : "mid-frame";
-    parts.push(`horizon line is ${pos}`);
-  }
-  if (!parts.length) return "";
-  return ` Camera viewpoint: ${parts.join("; ")}.`;
-}
 
 /**
  * Estimates a typical footprint (longest horizontal side, cm) from the product category and
@@ -494,65 +431,6 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, cat
     ` and if anything err slightly LARGER rather than smaller. If its edges reach or exceed the frame` +
     ` at the correct size, that is correct; never shrink it to fit the view.`
   );
-}
-
-/**
- * Asks Gemini to synthesise a view of the furniture from a specific elevation angle.
- * Used when the room camera is steeply tilted (≥ 35°) and the 2 standard product
- * photos don't give enough angular coverage for Gemini to composite correctly.
- *
- * @param preparedImgs  - white-bg + auto-cropped product images (already prepared)
- * @param tiltDeg       - target elevation in degrees (from Claude camera_tilt_deg)
- * @param furnitureType - e.g. "chair", "sofa", "table"
- * @returns data URL of the synthesised view, or null on failure
- */
-/** Elevation angle of a standard product photo (roughly 28° above horizontal). */
-const PRODUCT_SOURCE_ANGLE = 28;
-/**
- * Controls warp aggressiveness.
- * 0 = no warp, 1 = full geometric warp.
- * 0.55 gives a natural-looking result; lower if over-distorted, higher if too subtle.
- */
-const WARP_TUNE = 0.35;
-
-/**
- * Applies a strip-based keystone (perspective) warp to a product image so that
- * the viewing angle matches the room camera rather than the standard product-photo angle.
- *
- * - deltaDeg > 0 (room camera higher) → compress the top → more seat/tabletop visible
- * - deltaDeg < 0 (room camera lower)  → expand the top  → more front face visible
- * - |deltaDeg| < 8°                   → skip (imperceptible difference)
- */
-async function warpProductAngle(src: string, roomAngleDeg: number): Promise<string> {
-  const deltaDeg = roomAngleDeg - PRODUCT_SOURCE_ANGLE;
-  if (Math.abs(deltaDeg) < 8) return src;  // too small to bother
-
-  try {
-    const img = await loadImage(src);
-    const W = img.width;
-    const H = img.height;
-    const canvas = document.createElement("canvas");
-    canvas.width  = W;
-    canvas.height = H;
-    const ctx = canvas.getContext("2d")!;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, W, H);
-
-    // topScale < 1 compresses the top, creating a trapezoid that simulates a higher camera
-    const topScale = Math.max(0.35, 1 - Math.sin(deltaDeg * Math.PI / 180) * WARP_TUNE);
-
-    for (let y = 0; y < H; y++) {
-      const progress = y / H;
-      const scale    = topScale + (1 - topScale) * progress;
-      const rowW     = Math.round(W * scale);
-      const offsetX  = Math.round((W - rowW) / 2);
-      // Draw one scanline of the source into the (possibly narrower) row
-      ctx.drawImage(img, 0, y, W, 1, offsetX, y, rowW, 1);
-    }
-    return canvas.toDataURL("image/jpeg", 0.92);
-  } catch {
-    return src;  // graceful fallback — never blocks placement
-  }
 }
 
 /**
@@ -1082,7 +960,7 @@ export async function placeInRoom(
   const origW = origImg.width;
   const origH = origImg.height;
 
-  const roomResized = await resizeImage(roomPhoto, 1536, 1536, 0.92);
+  const roomResized = await resizeImage(roomPhoto, 2048, 2048, 0.92);
 
   // eraseLabel: derive the clearest possible single furniture-type word for Gemini.
   // Priority: (1) explicit category, (2) furniture keyword found in product name, (3) first word of name.
@@ -1151,27 +1029,12 @@ export async function placeInRoom(
 
   const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
 
-  // ── Product image prep ──────────────────────────────────────────────────────
-  // productImages[2] = 75° perspective alt view (topdown.jpg)
-  // productImages[3] = 75° front alt view (topdown_front.jpg)
-  // Both are pre-computed at product-save time via generateProductAltView().
+  // ── Product image prep: the two standard product photos as references ────────
   const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 4).map(toDataUrl))
+    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
     : [];
-  const roomAngle      = measurement?.camera_tilt_deg ?? null;
-  const hasPrebuiltAlt = productDataUrls.length >= 3;
-
-  const preparedImgs = await Promise.all(
+  const productResized = await Promise.all(
     productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
-  );
-
-  // Apply geometric warp only for the two standard views and only when no
-  // pre-built alt view exists (the alt view is already at the right angle).
-  const productResized: string[] = await Promise.all(
-    preparedImgs.map((img, i) => {
-      if (hasPrebuiltAlt || i >= 2) return Promise.resolve(img);
-      return roomAngle !== null ? warpProductAngle(img, roomAngle) : Promise.resolve(img);
-    }),
   );
 
   // Only use the erase result if Claude confirmed the target furniture type is present.
@@ -1186,257 +1049,58 @@ export async function placeInRoom(
 
   console.log(`[Furora] BUILD v3 · erase-decision: targetPresent=${targetPresent}, eraseCall=${eraseResult.status}, detected=${JSON.stringify(measurement?.detected_furniture ?? null)}`);
 
-  // ── Erase, with retry on failure AND on weak/no-op result ────────────────────
-  // Three ways the erase leaves old furniture behind → place step fuses:
-  //   1. the erase Gemini call REJECTS (returns text not an image / times out),
-  //   2. it no-ops (returns the room unchanged),
-  //   3. it partially erases (e.g. one section of a sectional).
-  // All three are handled the same way: keep calling the erase until we get an image
-  // that substantially changes the room. We seed from the erase that already ran in
-  // parallel with claude-measure, then retry as needed.
-  // Empirically: a full sofa removal scores ~20+ mean diff vs the original; a weak
-  // partial erase scores ~11. Threshold sits between them.
-  // Empirically: a small sofa cleared in one shot scores ~14–20 mean diff vs the original;
-  // a large sectional fully cleared scores ~28+; a weak partial that left most of it scores ~11–18.
-  const ERASE_MIN_DIFF     = 14;   // pass-1 one-shot clear bar (simple, single-piece rooms)
-  const ERASE_GOOD_DIFF    = 28;   // diff at which a big sectional is convincingly cleared
-  const ERASE_PLATEAU_GAIN = 8;    // once past GOOD_DIFF, a pass adding < this means the bulk is gone
-  const ERASE_STALL_GAIN   = 3;    // a pass adding < this means the model converged → noop, stop
-  const MAX_ERASE_ATTEMPTS = 4;
-
-  let canvasDataUrl   = roomResized;
-  let eraseWasApplied = false;
-  let eraseAttempts   = 0;   // how many erase passes actually ran (1 = simple one-shot clear)
-
-  if (targetPresent) {
-    let candidate: string | null = eraseResult.status === "fulfilled"
-      ? await cropToRatio(eraseResult.value, origW, origH)
-      : null;
-
-    let best: string | null = null;   // most-erased image so far (highest diff vs original)
-    let bestDiff = 0;
-    let prevDiff = 0;                  // diff from the previous pass, to measure per-pass progress
-
-    for (let attempt = 1; attempt <= MAX_ERASE_ATTEMPTS; attempt++) {
-      eraseAttempts = attempt;
-      if (candidate) {
-        const diff = await imageMeanDiff(candidate, roomResized);
-        const gain = diff - prevDiff;
-        console.log(`[Furora] erase attempt ${attempt}: diff vs original = ${diff.toFixed(1)} (need ≥ ${ERASE_MIN_DIFF}, gain ${gain.toFixed(1)})`);
-        if (diff > bestDiff) { best = candidate; bestDiff = diff; }
-
-        // Decide whether to stop. Crucially, a small gain does NOT mean "done" while the
-        // absolute diff is still low — that's a weak pass with lots of furniture remaining,
-        // so we must keep climbing. Only stop when the room is convincingly cleared, or the
-        // model has genuinely converged (a pass changed almost nothing → further passes are noops).
-        const oneShot = attempt === 1 && diff >= ERASE_MIN_DIFF;                    // simple room cleared in one pass
-        const cleared = diff >= ERASE_GOOD_DIFF && gain < ERASE_PLATEAU_GAIN;        // bulk of a sectional removed + plateaued
-        const stalled = attempt > 1 && gain < ERASE_STALL_GAIN;                      // model won't remove any more this run
-        if (oneShot || cleared || stalled) break;
-
-        prevDiff = diff;
-      } else {
-        console.warn(`[Furora] erase attempt ${attempt}: call returned no image`);
-      }
-      if (attempt >= MAX_ERASE_ATTEMPTS) break;
-      // PROGRESSIVE: feed the current partial erase back in so each pass removes more of
-      // a large sectional (re-erasing the original just repeats the same partial result).
-      // Fall back to the original room if we don't have a candidate yet.
-      const src = candidate ?? roomResized;
-      console.warn(`[Furora] erase still climbing — running progressive pass ${attempt + 1}/${MAX_ERASE_ATTEMPTS}`);
-      try {
-        candidate = await cropToRatio(
-          await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(src) } }]),
-          origW, origH,
-        );
-      } catch (e) { console.warn(`[Furora] erase pass failed:`, e instanceof Error ? e.message : e); /* keep previous candidate */ }
-    }
-
-    // Always composite onto the most-erased image we produced across all passes.
-    if (best) { canvasDataUrl = best; eraseWasApplied = true; }
+  // Single-pass erase. The erase prompt already fills the vacated floor/wall, so a good
+  // erase yields a true EMPTY ROOM. No progressive re-passes — they compound re-encoding
+  // drift and muddy the canvas; the place step's STEP 1 clears any residue instead.
+  let emptyRoom = roomResized;
+  if (targetPresent && eraseResult.status === "fulfilled") {
+    emptyRoom = await cropToRatio(eraseResult.value, origW, origH);
   }
 
-  const roomNote  = buildRoomNote(measurement);
-  const perspNote = buildPerspectiveNote(measurement);
   const scaleNote = buildScaleNote(measurement, dimensions, category ?? eraseLabel);
   console.log(`[Furora] scale: refs=${JSON.stringify(measurement?.visible_refs ?? null)} ·${scaleNote || " (none)"}`);
 
-  // ── CALL 2: PLACE (erased room + product photos + original as framing master) ──
-  const numRefs     = productResized.length;
-  const productSlot = numRefs >= 4 ? "second, third, fourth, and fifth images"
-                    : numRefs >= 3 ? "second, third, and fourth images"
-                    : numRefs >= 2 ? "second and third images"
-                    : "second image";
-  const framingSlot = numRefs >= 4 ? "sixth image"
-                    : numRefs >= 3 ? "fifth image"
-                    : numRefs >= 2 ? "fourth image"
-                    : "third image";
-  const numAltViews = Math.max(0, numRefs - 2);
+  // ── CALL 2: PLACE — put the product into the EMPTY ROOM ──────────────────────
+  // Old proven approach: feed the clean empty room + the product photos, and ask for a
+  // simple CLEAR → PLACE → INTEGRATE edit. No framing-master, no retry loop, no swap.
+  const persp = productResized[0] ?? null;
+  const front = productResized[1] ?? null;
 
-  // When the erase step was skipped (target furniture not in room), the background
-  // still contains all original furniture — tell Gemini this explicitly so it does
-  // not clear anything to "make room" for the new product.
-  const backgroundDesc = eraseWasApplied
-    ? `BACKGROUND (first image): The room to composite into. The existing ${eraseLabel} has been cleared from the floor area — the rest of the room is untouched.`
-    : `BACKGROUND (first image): The original room as photographed. Every piece of furniture, rug, plant, and decoration you can see MUST remain in your output exactly as-is. Do not remove, move, or alter any existing object.`;
-
-  const placePrompt =
-    `You are a compositing tool. You will overlay a furniture object onto an existing room photo.\n\n` +
-    `${backgroundDesc}\n\n` +
-    (hasPrebuiltAlt
-      ? `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place. ` +
-        `The first two are standard product photos. ` +
-        `The last ${numAltViews} image${numAltViews > 1 ? "s show" : " shows"} this exact furniture from a steep downward angle (~75°, nearly overhead) — ` +
-        `use ${numAltViews > 1 ? "these" : "it"} as the primary perspective reference when compositing from the room's camera angle.\n`
-      : `${productLabel} REFERENCE (${productSlot}): Photos of the exact ${productLabel.toLowerCase()} to place in the room.\n`) +
-    (productDescription ? `Product details: ${productDescription}\n` : ``) +
-    `PRODUCT FIDELITY: The ${productLabel.toLowerCase()} must look identical to the REFERENCE — same shape, colour, material, texture, surface finish, and proportions. Do not redesign or substitute it.\n` +
-    `Do NOT carry over any background from the reference images.\n` +
-    `ADD ONLY what the REFERENCE photos show — nothing more. Do NOT invent or add any separate extra item (for example a pouf, ottoman, footstool, stool, rug, cushion, throw, plant, lamp, side table, or any decorative accessory) that is neither shown in the reference photos nor already present in the room. Models often "style" leather furniture with a matching pouf — do not. The reference defines exactly what to add.\n` +
-    `EMPTY FLOOR RULE: the new ${productLabel.toLowerCase()} may be SMALLER than the ${eraseLabel} that was there. Any floor it does not cover MUST be shown as plain EMPTY floor, continuing the existing floor material — do NOT fill that space with any invented furniture, decor, plant, lamp, or rug, and do NOT restage, redecorate, relight, or "beautify" the room. This is a factual edit of THIS room, not a styled catalogue photo.\n\n` +
-    `FRAMING MASTER (${framingSlot}): The room with the old ${eraseLabel} ALREADY REMOVED — there is an empty floor area where it used to be. This image still shows every OTHER object that must stay (coffee tables, side tables, chairs, lamps, plants, rugs, decor). Use it as (a) a pixel-level framing template — ceiling line, wall edges, artworks, windows and floor boundaries at the identical positions; and (b) the truth for what furniture remains. There is NO old ${eraseLabel} in this image and there must be none in your output — you will add the NEW ${productLabel.toLowerCase()} in that empty area instead.\n\n` +
-    `PRIMARY GOAL — DO NOT SKIP: Your output MUST show the new ${productLabel.toLowerCase()} standing in the room. Returning the room with the empty floor area still empty (no ${productLabel.toLowerCase()} added) is a FAILURE. The single most important thing is that the new ${productLabel.toLowerCase()} is clearly, visibly present.\n\n` +
-    `SIZE — JUST AS IMPORTANT AS PLACEMENT:${scaleNote || ` Render the ${productLabel.toLowerCase()} at full, real-world size — furniture of this kind is very often rendered too small. Err larger rather than smaller; never shrink it to fit the frame.`}\n` +
-    `CRITICAL: the new ${productLabel.toLowerCase()} may be LARGER than whatever was previously in that spot. Size it to its OWN real measurements above — NEVER to the size of the cleared gap or the object that was removed. It is expected to extend beyond that gap.\n` +
-    `Before finishing, sanity-check the size against the yardstick object above: if the ${productLabel.toLowerCase()} looks small or dainty next to it, it is WRONG — make it bigger.\n\n` +
-    `Compositing steps:\n` +
-    `0. This is a precise technical overlay, not a creative photography task. Do not recompose, crop, zoom, pan, or rotate the scene. Treat the image grid as locked pixels.\n` +
-    `1. Add the new ${productLabel.toLowerCase()} on the floor in the same part of the room where the old ${eraseLabel} used to be — but at its OWN real-world size (it may be larger than what was removed and may extend beyond that spot). Do not shrink it to match the cleared footprint.${dimNote}${roomNote} Render it from the room's exact camera viewpoint — NOT from the product-photo's angle.${perspNote} It must be clearly, prominently visible.\n` +
-    `2. Keep the framing identical to the FRAMING MASTER: ceiling, walls, artworks, windows and floor boundaries at the same positions. Do not zoom or recompose.\n` +
-    `2b. Preserve every OTHER object exactly as it appears in the FRAMING MASTER — coffee tables, side tables, chairs, lamps, plants, rugs, decor. Never delete or move any of them. The ONLY change to the room is adding the new ${productLabel.toLowerCase()}.\n` +
-    `3. Size it to real-world scale (per SIZE above) — this is critical. A life-sized ${productLabel.toLowerCase()} is a substantial object. If it is so large that its edges are cropped, that is correct — never shrink it to fit the frame.\n` +
-    `4. The furniture must rest firmly on the floor — no floating. Add soft contact shadows where each leg or base touches the floor (a small dark penumbra at each contact point anchors it to the surface).\n` +
-    `5. Lighting — study the room carefully before rendering:\n` +
-    `   a. Identify every light source: windows (and which wall they're on), ceiling lights, floor lamps. Note which side of objects the shadows fall toward.\n` +
-    `   b. Apply that exact lighting to the placed object — direction, colour temperature (warm incandescent / cool daylight), and intensity. The reference photo uses neutral studio lighting — completely discard it.\n` +
-    `   c. If the room has backlighting (window behind the subject), the back edges of the furniture get a bright rim; the front face is in relative shadow with warm ambient fill from the floor.\n` +
-    `   d. Material response from the REFERENCE must be preserved: leather and vinyl show sharp specular highlights from the dominant light; fabric and bouclé are diffuse with no strong highlights; wood shows grain texture and a soft sheen.\n` +
-    `   e. The shadow cast on the floor must be directional — matching the angle and softness of other floor shadows in the scene, not a simple round blob.\n` +
-    `6. Blend edges naturally — no hard cuts, bright halos, or visible compositing seams.\n\n` +
-    `Output only the composited image. No text.`;
-
-  // FRAMING MASTER = the ERASED canvas (not the original room) when an erase ran, so
-  // the old furniture is absent from EVERY input to the place step. This prevents the
-  // two dominant failures: fusion (new product blended with the old one) and
-  // "nothing-changed" (the old furniture reproduced from the framing master). The
-  // erased canvas still carries all OTHER furniture (tables etc.), so they're kept.
-  const framingMaster = eraseWasApplied ? canvasDataUrl : roomResized;
-
-  const parts: unknown[] = [
-    { text: placePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(canvasDataUrl) } },           // BACKGROUND (erased)
-    ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // PRODUCT REFERENCE
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(framingMaster) } },           // FRAMING MASTER (erased canvas)
+  const placeParts: unknown[] = [
+    { text:
+      `FRAMING RULE (non-negotiable): your output MUST keep the EXACT same crop, field of view and aspect ratio as the EMPTY ROOM photo. Do NOT zoom, pan, or reframe.\n\n` +
+      `You will receive reference photo(s) of a ${productLabel} and an EMPTY ROOM photo to edit.` },
   ];
+  if (persp) placeParts.push(
+    { text: `DESIGN REFERENCE — a photo of the exact ${productLabel.toLowerCase()} to place. Study every detail: material, colour, cushion/surface shape, armrest/leg/base design and overall proportions.` },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } },
+  );
+  if (front) placeParts.push(
+    { text: `SILHOUETTE REFERENCE — another photo of the same ${productLabel.toLowerCase()}. Use it to judge the exact width, height and outline.` },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } },
+  );
+  placeParts.push(
+    { text: `EMPTY ROOM (edit this photo):` },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } },
+    { text:
+      `Edit the EMPTY ROOM photo:\n` +
+      `STEP 1 — CLEAR: if any ${eraseLabel} is still visible, erase it completely and fill the space with realistic floor and wall that match the surroundings.\n` +
+      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} from the reference photos. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Place it naturally on the floor where the old ${eraseLabel} was, or centred in the main seating area if there was none. Match its viewing angle to the room's perspective.\n` +
+      `STEP 3 — INTEGRATE: scale it realistically to the room.${dimNote}${scaleNote} Match its lighting and shadows to the room's own light sources, and add a soft contact shadow beneath it.\n` +
+      `KEEP THE ROOM AS-IS: the ${productLabel.toLowerCase()} may be SMALLER than the ${eraseLabel} that was there — any floor it does not cover stays as plain EMPTY floor. Do NOT add or invent any other furniture, plants, lamps, rugs or decor, and do NOT restage, redecorate or relight the rest of the room. Every other object stays exactly as in the EMPTY ROOM photo. This is a factual edit of THIS room, not a styled catalogue photo.\n` +
+      `FRAMING RULE (repeated): same crop and framing as the EMPTY ROOM photo. No zoom, no reframe. Output only the final edited photo. No text.` },
+  );
 
-  // ── Place call with retry-on-no-op ──────────────────────────────────────────
-  // With a clean erased canvas, the place step should add the new product. If it
-  // no-ops it returns the canvas essentially unchanged (no product added). Detect
-  // that by comparing against the BACKGROUND it composited onto: a real placement
-  // changes the product region well above the re-encode noise floor. Retry so the
-  // user reliably gets a placed product without manually clicking regenerate.
-  // Empirically: a clear placement scores ~12+ mean diff; a weak/ghosted placement
-  // that the user reads as "failed" scores ~8-9 (e.g. a chair that didn't really
-  // land). Threshold sits above those so weak placements are retried.
-  const PLACE_DIFF_THRESHOLD = 10;
-  const MAX_PLACE_ATTEMPTS   = 4;
-
-  let raw = await callGemini(parts);
-  let placedOk = false;
-  let placeAttempts   = 0;   // attempt index at which place resolved (1 = landed first try)
-  let placeDiffCanvas = 0;   // final place diff vs the erased canvas (placement strength)
-  for (let attempt = 1; attempt <= MAX_PLACE_ATTEMPTS; attempt++) {
-    placeAttempts = attempt;
-    const diffCanvas = await imageMeanDiff(raw, canvasDataUrl);  // ≈0 → nothing placed
-    placeDiffCanvas  = diffCanvas;
-    const diffOrig   = eraseWasApplied ? await imageMeanDiff(raw, roomResized) : 255; // ≈0 → old furniture reproduced
-    console.log(`[Furora] place attempt ${attempt}: diff vs erased-canvas = ${diffCanvas.toFixed(1)} (need ≥ ${PLACE_DIFF_THRESHOLD}), diff vs original = ${diffOrig.toFixed(1)}`);
-    const placedSomething = diffCanvas >= PLACE_DIFF_THRESHOLD;
-    const stillOriginal   = diffOrig < PLACE_DIFF_THRESHOLD;  // result looks like the untouched room
-    if (placedSomething && !stillOriginal) { placedOk = true; break; }  // a real, new placement
-    if (attempt >= MAX_PLACE_ATTEMPTS) break;
-    console.warn(`[Furora] place result looks wrong (placed=${placedSomething}, stillOriginal=${stillOriginal}), retrying place (attempt ${attempt + 1}/${MAX_PLACE_ATTEMPTS})`);
-    raw = await callGemini(parts);
-  }
-
-  // VERIFY with Claude vision. Pixel-diff can detect "nothing placed" and "identical to
-  // original", but it is blind to FUSION — the old furniture left in alongside the new one
-  // (happens when the erase silently failed but the place step still added the new product).
-  // A clean result has the old target gone and the new one present. Only runs when we erased
-  // a present target (no old furniture to fuse with otherwise). Null verdict → treat as clean.
-  // COST GATE: a clean single-pass erase followed by a strong first-try placement is almost
-  // never fused (the canvas genuinely was cleared, so there's nothing for the new product to
-  // fuse with). Skip the expensive Sonnet verify on those runs and only verify when there's a
-  // difficulty signal: a multi-pass erase (drift-prone), a place that needed retries, or a weak
-  // final place diff.
-  // EXCEPTION: sofas ALWAYS verify. They are the category where fusion AND hallucination (Gemini
-  // inventing an extra grey sofa beside the new one) occur, and no pixel metric can distinguish
-  // a fully-cleared sofa from a partial one — only the vision check can. The cost saving still
-  // applies to empty rooms and non-sofa categories (tables, chairs, beds).
-  const STRONG_PLACE_DIFF   = 18;
-  const placementLooksClean = !isSofa
-    && eraseAttempts === 1 && placeAttempts === 1 && placeDiffCanvas >= STRONG_PLACE_DIFF;
-
-  let needsSwap = !placedOk;
-  if (placedOk && eraseWasApplied && !placementLooksClean) {
-    const verdict = await verifyPlacement(raw, roomResized, eraseLabel);
-    if (verdict && verdict.old_present) {
-      console.warn(`[Furora] verify: old ${eraseLabel} still present (old=${verdict.old_present}, new=${verdict.new_present}) — fusion, routing to swap fallback`);
-      needsSwap = true;
-    } else if (verdict) {
-      console.log(`[Furora] verify: clean (old=${verdict.old_present}, new=${verdict.new_present})`);
+  // Place, with a single retry if the first result no-ops (returns the empty room ~unchanged).
+  let raw = await callGemini(placeParts);
+  try {
+    const diff = await imageMeanDiff(raw, emptyRoom);
+    console.log(`[Furora] place: diff vs empty room = ${diff.toFixed(1)}`);
+    if (diff < 8) {
+      console.warn(`[Furora] place looks like a no-op — retrying once`);
+      raw = await callGemini(placeParts);
     }
-  } else if (placedOk && eraseWasApplied) {
-    console.log(`[Furora] verify: skipped — placement looks clean (erase ${eraseAttempts} pass, place attempt ${placeAttempts}, diff ${placeDiffCanvas.toFixed(1)} ≥ ${STRONG_PLACE_DIFF})`);
-  }
-
-  // FALLBACK — direct swap on the ORIGINAL room.
-  // Triggered either by a place no-op or by a verified fusion. The usual root cause is a
-  // silently-failed erase: the old furniture was never actually removed (the mean-diff
-  // metric was inflated by re-encoding drift), so the place step composited the new product
-  // on top of / beside the old one. A one-shot "remove the old X, put this new one in its
-  // place" edit on the clean original is a different mechanism that often succeeds where the
-  // cleared-canvas path stalls. Only runs on the failure path, so clean rooms are untouched.
-  // Gated on eraseWasApplied so we only "swap" when there was a target present.
-  if (needsSwap && eraseWasApplied) {
-    console.warn(`[Furora] result needs recovery — falling back to a framing-locked swap on the original room`);
-    // Faithful swap: SWAP ONLY the sofa, leave the rest of the real room pixel-identical.
-    // Earlier this prompt had no framing discipline, so Gemini restaged the whole room
-    // (new rug, relit, decluttered) — a regression for a "see it in YOUR room" product.
-    // Now it carries the same pixel-lock language + FRAMING MASTER as the main place path.
-    const swapPrompt =
-      `You are a precise photo editor. In the room photo you will SWAP one piece of furniture for a different one and change NOTHING else.\n\n` +
-      `BACKGROUND (first image): the room exactly as photographed. It currently contains the old ${eraseLabel}.\n\n` +
-      `NEW ${productLabel} REFERENCE (${productSlot}): photos of the new ${productLabel.toLowerCase()} to put in.\n` +
-      (productDescription ? `Product details: ${productDescription}\n` : ``) +
-      `FRAMING MASTER (${framingSlot}): the same room again. Your output MUST match it pixel-for-pixel EVERYWHERE except the single ${eraseLabel} being swapped.\n\n` +
-      `This is a precise technical edit, NOT a creative re-render. Do NOT restage, redecorate, declutter, recompose, crop, zoom, pan, rotate, or relight the room. Treat every pixel as locked except the ${eraseLabel} region.\n\n` +
-      `Steps:\n` +
-      `1. Remove the existing ${eraseLabel} completely — every section, including any corner, chaise or extension modules and any cushions, pillows, throws or bags resting on it.\n` +
-      `2. In that exact spot put the NEW ${productLabel.toLowerCase()} from the REFERENCE — matching its shape, colour, material, texture and proportions exactly.${dimNote}${scaleNote} Render it from the room's own camera angle, resting firmly on the floor with realistic contact shadows and lighting matched to the room.${perspNote}\n` +
-      `3. EVERYTHING else stays pixel-identical to the FRAMING MASTER: the same walls, floor, windows, curtains, rug, coffee table and side tables, lamps, plants, clock, wall art, the bouquet, the items on the table, and the exact same camera framing. Do not add, remove, move, restyle or relight any of them.\n` +
-      `4. The new ${productLabel.toLowerCase()} may be SMALLER than the old ${eraseLabel}. Any floor the old one covered that the new one does not MUST become plain EMPTY floor, continuing the existing floor — do NOT fill it with invented furniture, decor, plants, lamps or rugs, and do NOT restage or beautify the room. This is a factual edit of THIS room.\n` +
-      `Output only the edited image. No text.`;
-    const swapParts: unknown[] = [
-      { text: swapPrompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // BACKGROUND = original room
-      ...productResized.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },  // FRAMING MASTER = original room
-    ];
-    for (let attempt = 1; attempt <= 2; attempt++) {
-      const swapRaw  = await callGemini(swapParts);
-      const swapDiff = await imageMeanDiff(swapRaw, roomResized);
-      raw = swapRaw;  // keep the latest swap result regardless — it's the best remaining option
-      if (swapDiff < PLACE_DIFF_THRESHOLD) {
-        console.log(`[Furora] swap fallback attempt ${attempt}: diff vs original = ${swapDiff.toFixed(1)} — no change, retrying`);
-        continue;  // swap did nothing — try once more
-      }
-      const v     = await verifyPlacement(swapRaw, roomResized, eraseLabel);
-      const clean = !v || (!v.old_present && v.new_present);  // null verdict → accept, don't loop
-      console.log(`[Furora] swap fallback attempt ${attempt}: diff vs original = ${swapDiff.toFixed(1)}${v ? `, verify(old=${v.old_present}, new=${v.new_present})` : ""}`);
-      if (clean) break;  // old furniture gone and new one present → done
-    }
-  }
+  } catch { /* diff is best-effort */ }
 
   return cropToRatio(raw, origW, origH);
 }
