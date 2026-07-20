@@ -1036,12 +1036,23 @@ export async function placeInRoom(
 
   console.log(`[Furora] BUILD v3 · erase-decision: targetPresent=${targetPresent}, eraseCall=${eraseResult.status}, detected=${JSON.stringify(measurement?.detected_furniture ?? null)}`);
 
-  // Single-pass erase. The erase prompt already fills the vacated floor/wall, so a good
-  // erase yields a true EMPTY ROOM. No progressive re-passes — they compound re-encoding
-  // drift and muddy the canvas; the place step's STEP 1 clears any residue instead.
+  // Erase. The blunt erase prompt fills the vacated floor/wall, so a good pass yields a
+  // true EMPTY ROOM. Big blanket-covered sectionals often leave a straggler section after
+  // ONE pass, so for sofas we run a SECOND pass — feeding the first result back through the
+  // same erase to sweep up the leftover. Capped at 2 passes total (not the old drift-prone
+  // 4-pass climb); the 2nd pass no-ops harmlessly on an already-clean room.
   let emptyRoom = roomResized;
   if (targetPresent && eraseResult.status === "fulfilled") {
     emptyRoom = await cropToRatio(eraseResult.value, origW, origH);
+    if (isSofa) {
+      try {
+        emptyRoom = await cropToRatio(
+          await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } }]),
+          origW, origH,
+        );
+        console.log(`[Furora] erase: ran 2nd sweep pass (sofa)`);
+      } catch (e) { console.warn(`[Furora] erase 2nd pass failed:`, e instanceof Error ? e.message : e); }
+    }
   }
 
   const scaleNote = buildScaleNote(measurement, dimensions, category ?? eraseLabel);
