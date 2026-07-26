@@ -342,6 +342,31 @@ function estimateFootprintCm(category: string | null | undefined, heightCm: numb
 }
 
 /**
+ * True when a measured room object (`refName`) is the SAME furniture type currently being
+ * replaced (`category`). Such objects get ERASED before placement, so they must NOT be used
+ * as a "still visible in the room" yardstick — the classic phantom-anchor bug where the note
+ * says "80% as wide as the sofa in the room" but that sofa was just erased.
+ */
+function matchesReplacedType(refName: string, category?: string | null): boolean {
+  const n = refName.toLowerCase();
+  const c = (category ?? "").toLowerCase().trim();
+  if (!c) return false;
+  const groups: string[][] = [
+    ["sofa", "couch", "sectional", "settee", "loveseat", "chaise"],
+    ["table", "desk"],
+    ["bed"],
+    ["chair", "armchair"],
+    ["wardrobe", "cabinet", "dresser", "sideboard"],
+    ["shelv", "bookcase", "bookshelf"],
+  ];
+  for (const g of groups) {
+    if (g.some((w) => c.includes(w))) return g.some((w) => n.includes(w));
+  }
+  const base = c.split(/\s+/)[0];
+  return base.length > 2 && n.includes(base);
+}
+
+/**
  * Builds a scale hint with MULTIPLE concrete anchors Gemini can verify against objects
  * it can actually see in the room. Two anchors matter:
  *  - FOOTPRINT (longest horizontal side vs a visible object's width) — the dominant size
@@ -375,13 +400,23 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, cat
       (r): r is { name: string; height_cm: number | null; width_cm: number } =>
         typeof r.width_cm === "number" && r.width_cm > 0,
     );
+    // CRITICAL: split refs into objects that SURVIVE into the empty room vs the piece being
+    // replaced (which is erased). Anchoring to an erased object is the phantom-anchor bug —
+    // Gemini can't measure against something no longer in the picture.
+    const persistentWide = widthRefs.filter((r) => !matchesReplacedType(r.name, category));
+    const replacedWide   = widthRefs.filter((r) =>  matchesReplacedType(r.name, category));
     // A flat rug/carpet is a poor footprint yardstick — the product sits ON it, so Gemini
     // reads it as floor rather than a discrete object to compare against. Prefer a real 3D
-    // object that has a height (the sofa); only fall back to a flat ref if nothing else.
-    const solidRefs = widthRefs.filter((r) => typeof r.height_cm === "number" && r.height_cm > 0);
-    const pool      = solidRefs.length ? solidRefs : widthRefs;
+    // object that has a height; only fall back to a flat ref if nothing else.
+    const solidRefs = persistentWide.filter((r) => typeof r.height_cm === "number" && r.height_cm > 0);
+    const pool      = solidRefs.length ? solidRefs : persistentWide;
     const anchorObj = pool.length
-      ? pool.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // widest among preferred pool
+      ? pool.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))  // widest object that stays visible
+      : null;
+    // The object being replaced: no longer visible, but its footprint is the most RELEVANT
+    // scale cue in a swap — the new piece goes exactly where it was.
+    const replacedObj = replacedWide.length
+      ? replacedWide.reduce((a, b) => (b.width_cm > a.width_cm ? b : a))
       : null;
     const floorW = (m && m.confidence !== "low") ? m.floor_width_cm : null;
     // When the footprint is an estimate (dims left blank), phrase it as typical, not exact.
@@ -392,7 +427,14 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, cat
       const pct = Math.round((footprint / anchorObj.width_cm) * 100);
       anchors.push(
         `${sizePhrase} — about ${pct}% as wide as the ${anchorObj.name} ` +
-        `visible in the room (~${anchorObj.width_cm}cm wide); use that object as your size yardstick`,
+        `still visible in the room (~${anchorObj.width_cm}cm wide); use that object as your size yardstick`,
+      );
+    } else if (replacedObj) {
+      const pct = Math.round((footprint / replacedObj.width_cm) * 100);
+      anchors.push(
+        `${sizePhrase}. The ${replacedObj.name} that previously stood in this exact spot was ` +
+        `about ${replacedObj.width_cm}cm wide — size the new piece to roughly ${pct}% of that width, ` +
+        `covering the same proportion of the cleared floor area`,
       );
     } else if (floorW) {
       const pct = Math.round((footprint / floorW) * 100);
@@ -405,11 +447,12 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, cat
     }
   }
 
-  // Height anchor — compared to a real object already visible in the room.
+  // Height anchor — compared to a real object that REMAINS visible in the room (never the
+  // erased piece being replaced, which would be another phantom anchor).
   if (height) {
     const refs = (m?.visible_refs ?? []).filter(
       (r): r is { name: string; height_cm: number; width_cm?: number | null } =>
-        typeof r.height_cm === "number" && r.height_cm > 0,
+        typeof r.height_cm === "number" && r.height_cm > 0 && !matchesReplacedType(r.name, category),
     );
     if (refs.length) {
       const best = refs.reduce((a, b) =>
