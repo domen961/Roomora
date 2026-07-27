@@ -321,6 +321,28 @@ async function measureRoom(roomDataUrl: string): Promise<RoomMeasurement | null>
   }
 }
 
+/**
+ * Sensitive yes/no check used by the erase verify-retry loop: is ANY sofa/couch/sectional
+ * material still visible (including small foreground or edge-clipped fragments)? More
+ * sensitive to leftovers than the general measureRoom inventory. Returns true when a sofa is
+ * still present, false when clean, and true on any failure (safe default → do another sweep).
+ */
+async function sofaStillPresent(roomDataUrl: string): Promise<boolean> {
+  try {
+    const res = await fetch("/api/claude-check-sofa", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ imageDataUrl: roomDataUrl }),
+    });
+    if (!res.ok) return true;
+    const data = await res.json();
+    if (data == null) return true;            // check failed → assume present (safe)
+    return data.sofa_present !== false;       // only "false" clears it
+  } catch {
+    return true;
+  }
+}
+
 
 /**
  * Estimates a typical footprint (longest horizontal side, cm) from the product category and
@@ -1091,17 +1113,9 @@ export async function placeInRoom(
     if (isSofa) {
       const MAX_EXTRA_PASSES = 2;  // up to 3 erase passes total; hard rooms only
       for (let pass = 1; pass <= MAX_EXTRA_PASSES; pass++) {
-        // Check the CURRENT erased image — is a sofa still detectable?
-        let stillThere = true;
-        try {
-          const check = await measureRoom(emptyRoom);
-          // check === null → detection failed → assume still there and sweep (safe default).
-          stillThere = check === null || check.detected_furniture.some((f) => {
-            const t = f.toLowerCase();
-            return t.includes("sofa") || t.includes("couch") || t.includes("sectional");
-          });
-          console.log(`[Furora] erase-verify ${pass}: sofaPresent=${stillThere}, detected=${JSON.stringify(check?.detected_furniture ?? "check-failed")}`);
-        } catch { stillThere = true; }
+        // Sensitive check on the CURRENT erased image — is any sofa fragment still visible?
+        const stillThere = await sofaStillPresent(emptyRoom);
+        console.log(`[Furora] erase-verify ${pass}: sofaPresent=${stillThere}`);
         if (!stillThere) break;  // clean — stop early (fast path for easy rooms)
         try {
           emptyRoom = await cropToRatio(
@@ -1142,7 +1156,7 @@ export async function placeInRoom(
     { text:
       `Edit the EMPTY ROOM photo:\n` +
       `STEP 1 — CLEAR: if ANY piece of the old ${eraseLabel} is still visible — especially a section in the FOREGROUND close to the camera, or one CUT OFF by the edge of the frame — erase it completely and fill the space with realistic floor, rug and wall that match the surroundings. A fragment running off the photo edge is still part of the old ${eraseLabel}; remove all of it, leave nothing behind.\n` +
-      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} from the reference photos. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Place it in the SAME spot and the SAME orientation the old ${eraseLabel} had — against the same wall, facing the same direction, with its back parallel to that wall. Align it to the room's perspective and the floor/wall lines so it sits flat and squarely grounded on the floor — not skewed, angled oddly, or floating. Its viewing angle must match the room's camera, not the product photo's angle.\n` +
+      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} from the reference photos. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Place it in the SAME spot and the SAME orientation the old ${eraseLabel} had — against the same wall, facing the same direction, with its back parallel to that wall. CENTER it on the footprint the old ${eraseLabel} occupied — sit it where the main seating area was, not shifted off to one side. Align it to the room's perspective and the floor/wall lines so it sits flat and squarely grounded on the floor — not skewed, angled oddly, or floating. Its viewing angle must match the room's camera, not the product photo's angle.\n` +
       `SHAPE FIDELITY — CRITICAL: place EXACTLY ONE ${productLabel.toLowerCase()} with the SAME shape, size and configuration as the reference photos. If the reference shows a straight two-seater, the result must be a straight two-seater. Do NOT duplicate it, mirror it, extend it, add extra seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the ${eraseLabel} that was there was bigger or L-shaped. Never "grow" the ${productLabel.toLowerCase()} to fill the space. If it is smaller than the area the old furniture occupied, that is fine — leave the remaining area as plain empty floor.\n` +
       `STEP 3 — INTEGRATE: scale it realistically to the room.${dimNote}${scaleNote} Match its lighting and shadows to the room's own light sources, and add a soft contact shadow beneath it.\n` +
       `KEEP THE ROOM AS-IS: the ${productLabel.toLowerCase()} may be SMALLER than the ${eraseLabel} that was there — any floor it does not cover stays as plain EMPTY floor. Do NOT add or invent any other furniture, plants, lamps, rugs or decor, and do NOT restage, redecorate or relight the rest of the room. Every other object stays exactly as in the EMPTY ROOM photo. This is a factual edit of THIS room, not a styled catalogue photo.\n` +
