@@ -1079,22 +1079,38 @@ export async function placeInRoom(
 
   console.log(`[Furora] BUILD v3 · erase-decision: targetPresent=${targetPresent}, eraseCall=${eraseResult.status}, detected=${JSON.stringify(measurement?.detected_furniture ?? null)}`);
 
-  // Erase. The blunt erase prompt fills the vacated floor/wall, so a good pass yields a
-  // true EMPTY ROOM. Big blanket-covered sectionals often leave a straggler section after
-  // ONE pass, so for sofas we run a SECOND pass — feeding the first result back through the
-  // same erase to sweep up the leftover. Capped at 2 passes total (not the old drift-prone
-  // 4-pass climb); the 2nd pass no-ops harmlessly on an already-clean room.
+  // Erase. The blunt erase prompt fills the vacated floor/wall, so a good pass yields a true
+  // EMPTY ROOM. But erase is non-deterministic on big L-sectionals: the same room can come
+  // back clean, with a straggler, or (worst case) barely touched. Prompt tuning alone can't
+  // fix that — so for sofas we VERIFY and RETRY: after each erase, ask Claude whether a sofa
+  // is still present; if it is, erase again. This never proceeds to placement with the old
+  // sofa still there (the two-sofa fusion failure). Capped so it can't drift or run away.
   let emptyRoom = roomResized;
   if (targetPresent && eraseResult.status === "fulfilled") {
     emptyRoom = await cropToRatio(eraseResult.value, origW, origH);
     if (isSofa) {
-      try {
-        emptyRoom = await cropToRatio(
-          await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } }]),
-          origW, origH,
-        );
-        console.log(`[Furora] erase: ran 2nd sweep pass (sofa)`);
-      } catch (e) { console.warn(`[Furora] erase 2nd pass failed:`, e instanceof Error ? e.message : e); }
+      const MAX_EXTRA_PASSES = 2;  // up to 3 erase passes total; hard rooms only
+      for (let pass = 1; pass <= MAX_EXTRA_PASSES; pass++) {
+        // Check the CURRENT erased image — is a sofa still detectable?
+        let stillThere = true;
+        try {
+          const check = await measureRoom(emptyRoom);
+          // check === null → detection failed → assume still there and sweep (safe default).
+          stillThere = check === null || check.detected_furniture.some((f) => {
+            const t = f.toLowerCase();
+            return t.includes("sofa") || t.includes("couch") || t.includes("sectional");
+          });
+          console.log(`[Furora] erase-verify ${pass}: sofaPresent=${stillThere}, detected=${JSON.stringify(check?.detected_furniture ?? "check-failed")}`);
+        } catch { stillThere = true; }
+        if (!stillThere) break;  // clean — stop early (fast path for easy rooms)
+        try {
+          emptyRoom = await cropToRatio(
+            await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } }]),
+            origW, origH,
+          );
+          console.log(`[Furora] erase: ran extra sweep pass ${pass}`);
+        } catch (e) { console.warn(`[Furora] erase sweep ${pass} failed:`, e instanceof Error ? e.message : e); break; }
+      }
     }
   }
 
