@@ -7,6 +7,7 @@ import LandingPage from "@/pages/LandingPage";
 import CapturePage from "@/pages/CapturePage";
 import PrivacyPage from "@/pages/PrivacyPage";
 import TermsPage from "@/pages/TermsPage";
+import HarnessPage from "@/pages/HarnessPage";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Route path="/login"                  element={<LoginPage />} />
         <Route path="/admin/*"                element={<AdminPage />} />
         <Route path="/try/:shopId/:productId" element={<TryPage />} />
+        <Route path="/harness"                element={<HarnessPage />} />
         <Route path="/capture/:token"                              element={<CapturePage />} />
         <Route path="/capture/:token/:merchantId/:productId"    element={<CapturePage />} />
         <Route path="*"                       element={<Navigate to="/" replace />} />
