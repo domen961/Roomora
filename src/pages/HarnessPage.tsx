@@ -108,13 +108,21 @@ export default function HarnessPage() {
   const runAll = async (runsArg?: number, prodArg?: Product | null) => {
     const useRuns = runsArg ?? runs;
     const useProduct = prodArg ?? product;
-    if (!useProduct || !rooms.length) return;
+    // Optional URL-driven subset + pacing: ?rooms=01,04,06 runs only those; ?pace=8000 waits
+    // 8s between runs so a batch stays under Gemini's per-minute rate limit.
+    const roomsParam = params.get("rooms");
+    const paceMs = Number(params.get("pace")) || 0;
+    const effectiveRooms = roomsParam
+      ? rooms.filter((rm) => roomsParam.split(",").some((x) => rm.file.includes(x.trim())))
+      : rooms;
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    if (!useProduct || !effectiveRooms.length) return;
     cancelRef.current = false;
     setRunning(true);
 
     // Pre-build the empty grid so results fill in place.
     const initial: Cell[] = [];
-    for (const room of rooms)
+    for (const room of effectiveRooms)
       for (let r = 1; r <= useRuns; r++)
         initial.push({ room: room.file, src: room.src, run: r, status: "pending", logs: [] });
     setCells(initial);
@@ -174,6 +182,8 @@ export default function HarnessPage() {
         }
         done++;
         setProgress({ done, total: initial.length });
+        // Pace between runs so the batch stays under Gemini's per-minute rate limit.
+        if (paceMs && i < initial.length - 1 && !cancelRef.current) await sleep(paceMs);
       }
     } finally {
       console.log = origLog; console.warn = origWarn;
