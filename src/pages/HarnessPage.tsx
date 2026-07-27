@@ -15,15 +15,51 @@ const DEFAULT_SHOP = "64559a6e-d4aa-45f0-bee0-0421210f8d8a"; // TC Meble
 
 interface RoomManifest { file: string; src: string; w: number; h: number }
 
+interface Grade {
+  erase:     { score: number; note: string };
+  scale:     { score: number; note: string };
+  placement: { score: number; note: string };
+  overall:   number;
+  verdict:   "pass" | "warn" | "fail";
+  summary:   string;
+}
+
 interface Cell {
   room: string;         // room-XX.jpg
   src: string;          // original filename
   run: number;          // 1..N
   status: "pending" | "running" | "done" | "error";
   result?: string;      // output data URL
+  savedUrl?: string;    // persisted public URL
+  grade?: Grade | null; // auto-grade (null = grader unavailable)
   error?: string;
   ms?: number;
   logs: string[];
+}
+
+async function gradeResult(
+  roomDataUrl: string, outputDataUrl: string, productRefDataUrl: string | undefined,
+  productName: string, category: string | null, dims: string,
+): Promise<Grade | null> {
+  try {
+    const res = await fetch("/api/claude-grade", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ roomDataUrl, outputDataUrl, productRefDataUrl, productName, category, dims }),
+    });
+    if (!res.ok) return null;
+    return (await res.json()) ?? null;
+  } catch { return null; }
+}
+
+async function saveResult(path: string, dataUrl: string): Promise<string | undefined> {
+  try {
+    const res = await fetch("/api/harness-save", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path, dataUrl }),
+    });
+    if (!res.ok) return undefined;
+    return (await res.json())?.url;
+  } catch { return undefined; }
 }
 
 async function urlToDataUrl(url: string): Promise<string> {
@@ -92,6 +128,17 @@ export default function HarnessPage() {
     };
     console.log = cap(origLog); console.warn = cap(origWarn);
 
+    // Prep once: a session id for save paths, product ref for the grader, dims string.
+    const session = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    const dimsStr = [product.length_cm, product.width_cm, product.height_cm].some(Boolean)
+      ? `${product.length_cm ?? "?"}×${product.width_cm ?? "?"}×${product.height_cm ?? "?"}cm` : "";
+    let productRef: string | undefined;
+    try { productRef = product.images[0] ? await urlToDataUrl(product.images[0]) : undefined; } catch { /* optional */ }
+    const slug = (product.name || "product").replace(/[^a-zA-Z0-9]+/g, "-").slice(0, 30);
+
+    // Cache each room's data URL so we don't refetch it for every run.
+    const roomCache = new Map<string, string>();
+
     let done = 0;
     try {
       for (let i = 0; i < initial.length; i++) {
@@ -101,7 +148,8 @@ export default function HarnessPage() {
         buffer = [];
         const t0 = performance.now();
         try {
-          const roomDataUrl = await urlToDataUrl(`/furora-inputs/${cell.room}`);
+          let roomDataUrl = roomCache.get(cell.room);
+          if (!roomDataUrl) { roomDataUrl = await urlToDataUrl(`/furora-inputs/${cell.room}`); roomCache.set(cell.room, roomDataUrl); }
           const out = await placeInRoom(
             product.images,
             roomDataUrl,
@@ -113,6 +161,13 @@ export default function HarnessPage() {
           const ms = Math.round(performance.now() - t0);
           const logs = [...buffer];
           setCells((prev) => prev.map((c, idx) => idx === i ? { ...c, status: "done", result: out, ms, logs } : c));
+
+          // Grade + persist in parallel (both best-effort — never fail the run).
+          const [grade, savedUrl] = await Promise.all([
+            gradeResult(roomDataUrl, out, productRef, product.name, product.category, dimsStr),
+            saveResult(`${session}/${slug}/${cell.room.replace(".jpg", "")}_run${cell.run}.jpg`, out),
+          ]);
+          setCells((prev) => prev.map((c, idx) => idx === i ? { ...c, grade, savedUrl } : c));
         } catch (err) {
           const logs = [...buffer];
           setCells((prev) => prev.map((c, idx) => idx === i ? { ...c, status: "error", error: err instanceof Error ? err.message : String(err), logs } : c));
@@ -146,6 +201,23 @@ export default function HarnessPage() {
     for (const c of cells) { if (!map.has(c.room)) map.set(c.room, []); map.get(c.room)!.push(c); }
     return [...map.entries()];
   }, [cells]);
+
+  // Aggregate grades across all graded cells
+  const summary = useMemo(() => {
+    const graded = cells.filter((c) => c.grade);
+    if (!graded.length) return null;
+    const avg = (f: (g: Grade) => number) => (graded.reduce((s, c) => s + f(c.grade!), 0) / graded.length);
+    const count = (v: Grade["verdict"]) => graded.filter((c) => c.grade!.verdict === v).length;
+    return {
+      n: graded.length,
+      overall: avg((g) => g.overall), erase: avg((g) => g.erase.score),
+      scale: avg((g) => g.scale.score), placement: avg((g) => g.placement.score),
+      pass: count("pass"), warn: count("warn"), fail: count("fail"),
+    };
+  }, [cells]);
+
+  const verdictColor = (v?: string) =>
+    v === "pass" ? "bg-green-600" : v === "warn" ? "bg-amber-600" : v === "fail" ? "bg-red-600" : "bg-neutral-600";
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">
@@ -184,6 +256,24 @@ export default function HarnessPage() {
             </div>}
         </div>
 
+        {summary && (
+          <div className="mb-6 rounded-lg border border-neutral-800 bg-neutral-900 p-4 flex flex-wrap gap-6 items-center">
+            <div className="flex gap-2 text-sm">
+              <span className="rounded bg-green-600 px-2 py-1">{summary.pass} pass</span>
+              <span className="rounded bg-amber-600 px-2 py-1">{summary.warn} warn</span>
+              <span className="rounded bg-red-600 px-2 py-1">{summary.fail} fail</span>
+              <span className="text-neutral-500 px-1 py-1">/ {summary.n} graded</span>
+            </div>
+            <div className="flex gap-4 text-sm text-neutral-300">
+              <span>overall <b className="text-white">{summary.overall.toFixed(1)}</b></span>
+              <span>erase <b className="text-white">{summary.erase.toFixed(1)}</b></span>
+              <span>scale <b className="text-white">{summary.scale.toFixed(1)}</b></span>
+              <span>placement <b className="text-white">{summary.placement.toFixed(1)}</b></span>
+              <span className="text-neutral-600">(1–5)</span>
+            </div>
+          </div>
+        )}
+
         {product && (
           <div className="flex gap-2 mb-6 items-center">
             <span className="text-xs text-neutral-500">Product refs:</span>
@@ -217,7 +307,25 @@ export default function HarnessPage() {
                         {c.status === "running" && <span className="text-xs text-amber-400 animate-pulse">running…</span>}
                         {c.status === "error" && <span className="text-[10px] text-red-400 p-2 text-center">{c.error}</span>}
                         {c.result && <img src={c.result} onClick={() => download(c)} className="w-full h-full object-cover cursor-pointer" title="click to download" />}
+                        {c.grade && (
+                          <span className={`absolute top-1 left-1 text-[10px] font-semibold px-1.5 py-0.5 rounded ${verdictColor(c.grade.verdict)}`}>
+                            {c.grade.verdict} {c.grade.overall}
+                          </span>
+                        )}
+                        {c.savedUrl && <a href={c.savedUrl} target="_blank" rel="noreferrer" className="absolute bottom-1 right-1 text-[9px] bg-black/60 rounded px-1 py-0.5 text-neutral-300 hover:text-white">saved ↗</a>}
                       </div>
+                      {c.grade && (
+                        <div className="mt-1 text-[10px] text-neutral-400 leading-tight">
+                          <div className="flex gap-2"><span>E{c.grade.erase.score}</span><span>S{c.grade.scale.score}</span><span>P{c.grade.placement.score}</span></div>
+                          <div className="text-neutral-500 mt-0.5">{c.grade.summary}</div>
+                          <details className="mt-0.5">
+                            <summary className="cursor-pointer text-neutral-600">notes</summary>
+                            <div className="text-neutral-500">erase: {c.grade.erase.note}</div>
+                            <div className="text-neutral-500">scale: {c.grade.scale.note}</div>
+                            <div className="text-neutral-500">place: {c.grade.placement.note}</div>
+                          </details>
+                        </div>
+                      )}
                       {c.logs.length > 0 && (
                         <details className="mt-1">
                           <summary className="text-[10px] text-neutral-500 cursor-pointer">logs ({c.logs.length})</summary>
