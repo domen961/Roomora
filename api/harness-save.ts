@@ -34,6 +34,7 @@ export default async function handler(req: any, res: any) {
     const up = await fetch(`${supabaseUrl}/storage/v1/object/product-images/${safe}`, {
       method: "POST",
       headers: {
+        "apikey":        serviceKey,
         "Authorization": `Bearer ${serviceKey}`,
         "Content-Type":  mimeType,
         "x-upsert":      "true",

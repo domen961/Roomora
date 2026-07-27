@@ -322,25 +322,54 @@ async function measureRoom(roomDataUrl: string): Promise<RoomMeasurement | null>
 }
 
 /**
- * Sensitive yes/no check used by the erase verify-retry loop: is ANY sofa/couch/sectional
- * material still visible (including small foreground or edge-clipped fragments)? More
- * sensitive to leftovers than the general measureRoom inventory. Returns true when a sofa is
- * still present, false when clean, and true on any failure (safe default → do another sweep).
+ * Sensitive check used by the erase verify-retry loop: is ANY sofa/couch/sectional material
+ * still visible (including small foreground or edge-clipped fragments), and WHERE? More
+ * sensitive to leftovers than the general measureRoom inventory.
+ * - present: true when a sofa is still there, false when clean, true on any failure (safe
+ *   default → do another sweep).
+ * - where: short location description of the leftover, used to target the next erase pass.
+ * - confident: true only when the endpoint gave a real answer. Used to gate the fail-safe so
+ *   a transient check error never throws away an otherwise-good placement.
  */
-async function sofaStillPresent(roomDataUrl: string): Promise<boolean> {
+async function checkSofa(roomDataUrl: string): Promise<{ present: boolean; where: string; confident: boolean }> {
   try {
     const res = await fetch("/api/claude-check-sofa", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ imageDataUrl: roomDataUrl }),
     });
-    if (!res.ok) return true;
+    if (!res.ok) return { present: true, where: "", confident: false };
     const data = await res.json();
-    if (data == null) return true;            // check failed → assume present (safe)
-    return data.sofa_present !== false;       // only "false" clears it
+    if (data == null) return { present: true, where: "", confident: false };  // check failed → assume present
+    return {
+      present:   data.sofa_present !== false,   // only an explicit false clears it
+      where:     typeof data.where === "string" ? data.where : "",
+      confident: true,
+    };
   } catch {
-    return true;
+    return { present: true, where: "", confident: false };
   }
+}
+
+/**
+ * Escalating erase prompt for retry passes. Repeating the identical blunt erase plateaus on
+ * big L-sectionals (verified: 3 passes, sofa still there). So each retry is targeted (uses
+ * the leftover's location) and more aggressive than the last.
+ */
+function buildRetryErase(label: string, otherTypes: string, where: string, pass: number): string {
+  const loc = where ? ` The leftover is located at: ${where}.` : "";
+  const framing = `FRAMING RULE (non-negotiable): keep the EXACT same crop, field of view and aspect ratio as the input. Do NOT zoom, pan or reframe.\n\n`;
+  if (pass <= 1) {
+    return framing +
+      `This room photo STILL contains a ${label} that was NOT fully removed.${loc} ` +
+      `Remove every remaining part of it — cushions, back, armrests, chaise/corner sections, base and legs, plus anything draped over it — down to the bare floor, and fill the area with realistic floor and wall that blend seamlessly. ` +
+      `Do NOT touch ${otherTypes}, tables, rugs, plants, curtains, lamps or artwork. Output only the edited photo. No text.`;
+  }
+  // Pass 2+: nuclear clear of the whole seating zone.
+  return framing +
+    `A ${label} is STILL present in this image and MUST be completely removed.${loc} ` +
+    `Aggressively clear the ENTIRE seating area: erase every piece of upholstered ${label} material — all cushions, backrests, armrests, chaise and corner modules, base and legs — INCLUDING any section in the foreground close to the camera or cut off by the edge of the frame. Replace all of it with plain bare floor and wall matching the rest of the room. When in doubt, remove MORE rather than less. ` +
+    `Keep tables, rugs, plants, curtains, lamps and artwork. Output only the edited photo. No text.`;
 }
 
 
@@ -1111,19 +1140,28 @@ export async function placeInRoom(
   if (targetPresent && eraseResult.status === "fulfilled") {
     emptyRoom = await cropToRatio(eraseResult.value, origW, origH);
     if (isSofa) {
-      const MAX_EXTRA_PASSES = 2;  // up to 3 erase passes total; hard rooms only
-      for (let pass = 1; pass <= MAX_EXTRA_PASSES; pass++) {
-        // Sensitive check on the CURRENT erased image — is any sofa fragment still visible?
-        const stillThere = await sofaStillPresent(emptyRoom);
-        console.log(`[Furora] erase-verify ${pass}: sofaPresent=${stillThere}`);
-        if (!stillThere) break;  // clean — stop early (fast path for easy rooms)
+      const MAX_RETRY_PASSES = 3;  // escalating, targeted; only hard rooms use them all
+      let check = await checkSofa(emptyRoom);
+      console.log(`[Furora] erase-verify 0: sofaPresent=${check.present}${check.where ? ` @ ${check.where}` : ""}`);
+      let attempt = 0;
+      while (check.present && attempt < MAX_RETRY_PASSES) {
+        attempt++;
+        const retryPrompt = buildRetryErase(eraseLabel, otherTypes, check.where, attempt);
         try {
           emptyRoom = await cropToRatio(
-            await callGemini([{ text: erasePrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } }]),
+            await callGemini([{ text: retryPrompt }, { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } }]),
             origW, origH,
           );
-          console.log(`[Furora] erase: ran extra sweep pass ${pass}`);
-        } catch (e) { console.warn(`[Furora] erase sweep ${pass} failed:`, e instanceof Error ? e.message : e); break; }
+          console.log(`[Furora] erase: escalated pass ${attempt}${check.where ? ` targeting "${check.where}"` : ""}`);
+        } catch (e) { console.warn(`[Furora] erase sweep ${attempt} failed:`, e instanceof Error ? e.message : e); break; }
+        check = await checkSofa(emptyRoom);
+        console.log(`[Furora] erase-verify ${attempt}: sofaPresent=${check.present}${check.where ? ` @ ${check.where}` : ""}`);
+      }
+      // Fail-safe: never ship a two-sofa image. If the old sofa is CONFIRMED still present
+      // after every escalating pass, surface a retry message instead of placing onto it.
+      if (check.present && check.confident) {
+        console.warn(`[Furora] erase-final: sofa still present after ${attempt} passes — aborting placement`);
+        throw new Error("We couldn't fully remove the existing sofa from this photo. Try a photo taken from a bit further back or a different angle so the whole sofa is clearly visible.");
       }
     }
   }
