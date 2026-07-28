@@ -1180,28 +1180,30 @@ export async function placeInRoom(
 
   const placeParts: unknown[] = [
     { text:
-      `FRAMING RULE (non-negotiable): your output MUST keep the EXACT same crop, field of view and aspect ratio as the EMPTY ROOM photo. Do NOT zoom, pan, or reframe.\n\n` +
-      `You will receive reference photo(s) of a ${productLabel} and an EMPTY ROOM photo to edit.` },
-  ];
-  if (persp) placeParts.push(
-    { text: `DESIGN REFERENCE — a photo of the exact ${productLabel.toLowerCase()} to place. Study every detail: material, colour, cushion/surface shape, armrest/leg/base design and overall proportions.` },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } },
-  );
-  if (front) placeParts.push(
-    { text: `SILHOUETTE REFERENCE — another photo of the same ${productLabel.toLowerCase()}. Use it to judge the exact width, height and outline.` },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } },
-  );
-  placeParts.push(
-    { text: `EMPTY ROOM (edit this photo):` },
+      `TASK: This is a precise PHOTO EDIT of an existing room photo — NOT image generation, NOT a catalogue render. ` +
+      `The FIRST image below is the ROOM. Your output must be THAT EXACT photo with only ONE change: the ${productLabel.toLowerCase()} is placed into it. ` +
+      `Preserve everything else pixel-for-pixel — the CAMERA ANGLE and PERSPECTIVE, the crop and field of view, the walls, floor, window, curtains, artwork, rug, tables, lamps, lighting and shadows must all stay exactly as they are in the ROOM photo. ` +
+      `Do NOT re-render the scene from a new viewpoint, do NOT straighten the camera, do NOT zoom, pan or reframe.` },
+    { text: `ROOM — the base image to edit (preserve its camera and every object except the replaced ${eraseLabel}):` },
     { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } },
+  ];
+  if (persp || front) {
+    placeParts.push({ text:
+      `The next photo(s) are APPEARANCE REFERENCE ONLY for the ${productLabel} to place — use them solely for its material, colour, shape, proportions and details. ` +
+      `IGNORE their studio/white background, their lighting, and ESPECIALLY their camera angle. ` +
+      `Do NOT copy the product photo's straight-on viewpoint — the ${productLabel.toLowerCase()} in your output must be seen from the ROOM's camera angle, matching the room's perspective and its floor and wall lines.` });
+    if (persp) placeParts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } });
+    if (front) placeParts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } });
+  }
+  placeParts.push(
     { text:
-      `Edit the EMPTY ROOM photo:\n` +
-      `STEP 1 — CLEAR: if ANY piece of the old ${eraseLabel} is still visible — especially a section in the FOREGROUND close to the camera, or one CUT OFF by the edge of the frame — erase it completely and fill the space with realistic floor, rug and wall that match the surroundings. A fragment running off the photo edge is still part of the old ${eraseLabel}; remove all of it, leave nothing behind.\n` +
-      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} from the reference photos. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Place it in the SAME spot and the SAME orientation the old ${eraseLabel} had — against the same wall, facing the same direction, with its back parallel to that wall. CENTER it on the footprint the old ${eraseLabel} occupied — sit it where the main seating area was, not shifted off to one side. Align it to the room's perspective and the floor/wall lines so it sits flat and squarely grounded on the floor — not skewed, angled oddly, or floating. Its viewing angle must match the room's camera, not the product photo's angle.\n` +
-      `SHAPE FIDELITY — CRITICAL: place EXACTLY ONE ${productLabel.toLowerCase()} with the SAME shape, size and configuration as the reference photos. If the reference shows a straight two-seater, the result must be a straight two-seater. Do NOT duplicate it, mirror it, extend it, add extra seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the ${eraseLabel} that was there was bigger or L-shaped. Never "grow" the ${productLabel.toLowerCase()} to fill the space. If it is smaller than the area the old furniture occupied, that is fine — leave the remaining area as plain empty floor.\n` +
+      `Now edit the ROOM image:\n` +
+      `STEP 1 — CLEAR: if ANY piece of the old ${eraseLabel} is still visible — especially a section in the FOREGROUND close to the camera, or one CUT OFF by the edge of the frame — erase it completely and fill the space with realistic floor, rug and wall that match the surroundings. A fragment running off the photo edge is still part of the old ${eraseLabel}; remove all of it.\n` +
+      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} using the appearance references. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Put it in the SAME spot and orientation the old ${eraseLabel} had — against the same wall, facing the same way, back parallel to that wall, CENTERED on the footprint the old ${eraseLabel} occupied. It must sit flat and squarely grounded on the floor, rendered from the ROOM's camera angle (never the product photo's angle).\n` +
+      `SHAPE FIDELITY — CRITICAL: place EXACTLY ONE ${productLabel.toLowerCase()} with the SAME shape, size and configuration as the reference photos. If the reference shows a straight two-seater, the result must be a straight two-seater. Do NOT duplicate, mirror, extend, add seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the old ${eraseLabel} was bigger or L-shaped. If it is smaller than the area the old furniture occupied, that is fine — leave the rest as plain empty floor.\n` +
       `STEP 3 — INTEGRATE: scale it realistically to the room.${dimNote}${scaleNote} Match its lighting and shadows to the room's own light sources, and add a soft contact shadow beneath it.\n` +
-      `KEEP THE ROOM AS-IS: the ${productLabel.toLowerCase()} may be SMALLER than the ${eraseLabel} that was there — any floor it does not cover stays as plain EMPTY floor. Do NOT add or invent any other furniture, plants, lamps, rugs or decor, and do NOT restage, redecorate or relight the rest of the room. Every other object stays exactly as in the EMPTY ROOM photo. This is a factual edit of THIS room, not a styled catalogue photo.\n` +
-      `FRAMING RULE (repeated): same crop and framing as the EMPTY ROOM photo. No zoom, no reframe. Output only the final edited photo. No text.` },
+      `KEEP THE ROOM AS-IS: do NOT add or invent any other furniture, plants, lamps, rugs or decor, and do NOT restage, redecorate or relight the rest of the room. Every other object stays exactly as in the ROOM photo. This is a factual edit of THIS room, not a styled catalogue photo.\n` +
+      `FRAMING (repeated, non-negotiable): identical camera angle, perspective, crop and framing to the ROOM image. No new viewpoint, no straightening, no zoom, no reframe. Output only the final edited photo. No text.` },
   );
 
   // Place, with a single retry if the first result no-ops (returns the empty room ~unchanged).
