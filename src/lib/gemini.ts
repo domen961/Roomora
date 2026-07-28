@@ -1102,7 +1102,9 @@ export async function placeInRoom(
     `Place exactly ONE ${productLabel} with the same shape and configuration as the reference — do not duplicate, extend, or reshape it into a larger/L-shaped/sectional arrangement even if the old ${eraseLabel} was bigger. If it is smaller than the old furniture, leave the extra as empty floor. Ground it flat on the floor with a soft contact shadow, matching the room's lighting.${dimNote}${scaleNote}`;
 
   const images = [roomResized, ...(persp ? [persp] : []), ...(front ? [front] : [])];
-  const size = origW > origH ? "1536x1024" : origW < origH ? "1024x1536" : "1024x1024";
+  // "auto" makes gpt-image-2 match the INPUT aspect ratio (verified) — forcing a discrete size
+  // (e.g. 3:2) cropped/reframed non-matching inputs like 16:9. cropToRatio then trims to exact.
+  const size = "auto";
 
   // Single call, with one retry if it no-ops (returns the room ~unchanged).
   let raw = await generateImage(promptText, images, size);
