@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Loader2 } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Grid3x3, Loader2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
-import { refinePlacement } from "@/lib/gemini";
+import { refinePlacement, type RefineMode } from "@/lib/gemini";
 
 interface Props {
   result:             string;
@@ -28,10 +28,10 @@ export default function ResultStep({ result, productName, category, onReset, onR
   const [fixing, setFixing] = useState(false);
   const shown = fixed ?? result;
 
-  const handleFix = async () => {
+  const handleFix = async (mode: RefineMode) => {
     setFixing(true);
     try {
-      const out = await refinePlacement(shown, category);
+      const out = await refinePlacement(shown, category, mode);
       setFixed(out);
     } catch (err) {
       console.error("[Furora] fix failed:", err);
@@ -100,11 +100,17 @@ export default function ResultStep({ result, productName, category, onReset, onR
               <Download className="h-4 w-4" />{t("download")}
             </button>
           </div>
-          {/* Fix — refine the current result */}
-          <button onClick={handleFix} disabled={fixing}
-            className="w-full max-w-xs flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
-            <Sparkles className="h-4 w-4" />{fixing ? t("fixing") : t("fix")}
-          </button>
+          {/* Fix — targeted correction of the current result */}
+          <div className="flex gap-3 w-full max-w-xs">
+            <button onClick={() => handleFix("straighten")} disabled={fixing}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+              <Sparkles className="h-4 w-4" />{t("straighten")}
+            </button>
+            <button onClick={() => handleFix("floor")} disabled={fixing}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+              <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
+            </button>
+          </div>
           {/* Regenerate — separated with hint */}
           {onRegenerate && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
@@ -170,12 +176,16 @@ export default function ResultStep({ result, productName, category, onReset, onR
           </Button>
         </div>
 
-        {/* Fix — refine the current result */}
+        {/* Fix — targeted corrections of the current result */}
         <div className="flex flex-col items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleFix} className="gap-2" disabled={fixing}>
-            {fixing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            {fixing ? t("fixing") : t("fix")}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => handleFix("straighten")} className="gap-2" disabled={fixing}>
+              <Sparkles className="h-4 w-4" />{t("straighten")}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleFix("floor")} className="gap-2" disabled={fixing}>
+              <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
+            </Button>
+          </div>
           <p className="text-xs text-muted-foreground">{t("fixHint")}</p>
         </div>
 

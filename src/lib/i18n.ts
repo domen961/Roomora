@@ -56,7 +56,9 @@ const en = {
   regenAgain:         "Result looks unrealistic? Try again with a new generation.",
   fix:                "Fix",
   fixing:             "Refining…",
-  fixHint:            "Sofa crooked or a detail off? Let AI refine it.",
+  straighten:         "Straighten",
+  fixFloor:           "Fix floor",
+  fixHint:            "Not quite right? Straighten the furniture or fix the floor.",
   poweredBy:          "Powered by",             // `${poweredBy} Furora & Gemini AI`
 };
 
@@ -99,7 +101,9 @@ const pl: Record<Keys, string> = {
   regenAgain:         "Wynik wygląda nierealistycznie? Spróbuj wygenerować ponownie.",
   fix:                "Popraw",
   fixing:             "Poprawiam…",
-  fixHint:            "Kanapa krzywo lub szczegół nie gra? Pozwól AI to poprawić.",
+  straighten:         "Wyprostuj",
+  fixFloor:           "Popraw podłogę",
+  fixHint:            "Nie do końca tak? Wyprostuj mebel lub popraw podłogę.",
   poweredBy:          "Obsługiwane przez",
 };
 
