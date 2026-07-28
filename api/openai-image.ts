@@ -33,7 +33,7 @@ export default async function handler(req: any, res: any) {
     form.append("model", "gpt-image-2");
     form.append("prompt", prompt);
     form.append("size", size || "auto");
-    form.append("quality", "high");          // gpt-image-2 handles input fidelity natively (no input_fidelity param)
+    form.append("quality", "medium");        // gpt-image-2 "thinks" — high exceeds the 60s Hobby function limit; medium fits
     images.forEach((dataUrl, i) => {
       const conv = dataUrlToBlob(dataUrl);
       if (conv) form.append("image[]", conv.blob, `image_${i}.${conv.ext}`);
