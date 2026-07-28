@@ -54,6 +54,9 @@ const en = {
   regenerate:         "Regenerate",
   regenFree:          "Not quite right? Try one more, on us.",
   regenAgain:         "Result looks unrealistic? Try again with a new generation.",
+  fix:                "Fix",
+  fixing:             "Refining…",
+  fixHint:            "Sofa crooked or a detail off? Let AI refine it.",
   poweredBy:          "Powered by",             // `${poweredBy} Furora & Gemini AI`
 };
 
@@ -94,6 +97,9 @@ const pl: Record<Keys, string> = {
   regenerate:         "Generuj ponownie",
   regenFree:          "Nie do końca tak? Spróbuj jeszcze raz — na nasz koszt.",
   regenAgain:         "Wynik wygląda nierealistycznie? Spróbuj wygenerować ponownie.",
+  fix:                "Popraw",
+  fixing:             "Poprawiam…",
+  fixHint:            "Kanapa krzywo lub szczegół nie gra? Pozwól AI to poprawić.",
   poweredBy:          "Obsługiwane przez",
 };
 

@@ -325,6 +325,27 @@ async function generateImage(
   return callGemini(parts);
 }
 
+/**
+ * Correction pass for the "Fix" button: re-edits a finished placement to straighten the
+ * furniture, make the flooring consistent, and clean up drifted/warped details — WITHOUT
+ * re-rolling from scratch. Operates on the RESULT image alone (no original room), so it can
+ * never reintroduce the old furniture.
+ */
+export async function refinePlacement(resultImage: string, category?: string | null): Promise<string> {
+  const img = await loadImage(resultImage);
+  const w = img.width, h = img.height;
+  const resized = await resizeImage(resultImage, 2048, 2048, 0.92);
+  const label = (category ?? "furniture").toLowerCase();
+  const prompt =
+    `This is a photo of a room with a ${label} in it. Refine it — fix only what looks wrong and change nothing else:\n` +
+    `1. If the ${label} is rotated or angled, rotate it so its back sits flush and PARALLEL to the wall behind it, squared to the room and aligned with the floor and wall lines — not twisted out into the room.\n` +
+    `2. Make the floor run in ONE consistent direction (planks/tiles all aligned), with no visible seams where furniture was changed.\n` +
+    `3. Fix any distorted, warped or unrealistic details on the ${label} or in the room.\n` +
+    `Keep the SAME room, camera angle, framing, lighting and every object, and keep the ${label}'s appearance, colour and position otherwise. Do not add or remove any furniture. Output only the corrected photo.`;
+  const raw = await generateImage(prompt, [resized], "auto");
+  return cropToRatio(raw, w, h);
+}
+
 export interface ProductDimensions {
   length_cm?: number | null;
   width_cm?:  number | null;

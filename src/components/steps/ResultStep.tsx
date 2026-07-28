@@ -1,13 +1,16 @@
-import { Download, RefreshCw, RotateCcw, Share2 } from "lucide-react";
+import { useState } from "react";
+import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Loader2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
+import { refinePlacement } from "@/lib/gemini";
 
 interface Props {
   result:             string;
   productName:        string;
+  category?:          string | null;   // for the Fix correction prompt
   onReset:            () => void;
-  onRegenerate?:      () => void;  // re-run Gemini with the same room photo
+  onRegenerate?:      () => void;  // re-run with the same room photo
   freeRegenAvailable?: boolean;    // true until the one free regeneration is used
 }
 
@@ -16,20 +19,37 @@ const isMobile =
   (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-export default function ResultStep({ result, productName, onReset, onRegenerate, freeRegenAvailable }: Props) {
+export default function ResultStep({ result, productName, category, onReset, onRegenerate, freeRegenAvailable }: Props) {
   const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
   const regenHint = freeRegenAvailable ? t("regenFree") : t("regenAgain");
 
+  // "Fix" correction pass — refines the current result in place (repeatable).
+  const [fixed, setFixed] = useState<string | null>(null);
+  const [fixing, setFixing] = useState(false);
+  const shown = fixed ?? result;
+
+  const handleFix = async () => {
+    setFixing(true);
+    try {
+      const out = await refinePlacement(shown, category);
+      setFixed(out);
+    } catch (err) {
+      console.error("[Furora] fix failed:", err);
+    } finally {
+      setFixing(false);
+    }
+  };
+
   const handleDownload = () => {
     const a = document.createElement("a");
-    a.href = result;
+    a.href = shown;
     a.download = filename;
     a.click();
   };
 
   const handleShare = async () => {
     try {
-      const res  = await fetch(result);
+      const res  = await fetch(shown);
       const blob = await res.blob();
       const file = new File([blob], filename, { type: "image/jpeg" });
       if (navigator.canShare?.({ files: [file] })) {
@@ -46,9 +66,17 @@ export default function ResultStep({ result, productName, onReset, onRegenerate,
   if (isMobile) {
     return (
       <div className="relative w-full bg-background overflow-hidden" style={{ height: "100dvh" }}>
-        <img src={result} alt={`${productName} placed in room`}
+        <img src={shown} alt={`${productName} placed in room`}
           className="absolute inset-0 w-full h-full object-contain" />
-        <div className="absolute bottom-0 left-0 right-0 h-48 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+        {fixing && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+            <div className="flex flex-col items-center gap-2 text-white">
+              <Loader2 className="h-8 w-8 animate-spin" />
+              <span className="text-sm">{t("fixing")}</span>
+            </div>
+          </div>
+        )}
+        <div className="absolute bottom-0 left-0 right-0 h-56 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
         <div className="absolute top-8 left-0 right-0 flex items-center justify-between px-6">
           <div className="w-10" /> {/* spacer */}
           <div className="pointer-events-none"><Logo /></div>
@@ -63,21 +91,26 @@ export default function ResultStep({ result, productName, onReset, onRegenerate,
           <p className="text-white/80 text-sm font-light">{t("heresRoom")}</p>
           {/* Primary actions: Retry + Download */}
           <div className="flex gap-3 w-full max-w-xs">
-            <button onClick={onReset}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform">
+            <button onClick={onReset} disabled={fixing}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
               <RotateCcw className="h-4 w-4" />{t("retry")}
             </button>
-            <button onClick={handleDownload}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform">
+            <button onClick={handleDownload} disabled={fixing}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform disabled:opacity-50">
               <Download className="h-4 w-4" />{t("download")}
             </button>
           </div>
+          {/* Fix — refine the current result */}
+          <button onClick={handleFix} disabled={fixing}
+            className="w-full max-w-xs flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+            <Sparkles className="h-4 w-4" />{fixing ? t("fixing") : t("fix")}
+          </button>
           {/* Regenerate — separated with hint */}
           {onRegenerate && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
               <p className="text-white/45 text-xs">{regenHint}</p>
-              <button onClick={onRegenerate}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform">
+              <button onClick={onRegenerate} disabled={fixing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform disabled:opacity-50">
                 <RefreshCw className="h-4 w-4" />{t("regenerate")}
               </button>
             </div>
@@ -105,33 +138,52 @@ export default function ResultStep({ result, productName, onReset, onRegenerate,
           <h1 className="text-3xl text-primary">{productName} {t("inYourRoom")}</h1>
         </div>
 
-        <img
-          src={result}
-          alt={`${productName} placed in room`}
-          className="w-full rounded-xl border border-border object-contain shadow-[var(--shadow-md)]"
-        />
+        <div className="relative">
+          <img
+            src={shown}
+            alt={`${productName} placed in room`}
+            className="w-full rounded-xl border border-border object-contain shadow-[var(--shadow-md)]"
+          />
+          {fixing && (
+            <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50">
+              <div className="flex flex-col items-center gap-2 text-white">
+                <Loader2 className="h-8 w-8 animate-spin" />
+                <span className="text-sm">{t("fixing")}</span>
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Primary actions */}
         <div className="flex gap-3">
-          <Button onClick={handleDownload} size="lg" className="flex-1 gap-2">
+          <Button onClick={handleDownload} size="lg" className="flex-1 gap-2" disabled={fixing}>
             <Download className="h-4 w-4" />
             {t("download")}
           </Button>
-          <Button variant="outline" size="lg" onClick={handleShare} className="gap-2">
+          <Button variant="outline" size="lg" onClick={handleShare} className="gap-2" disabled={fixing}>
             <Share2 className="h-4 w-4" />
             {t("share")}
           </Button>
-          <Button variant="outline" size="lg" onClick={onReset} className="gap-2">
+          <Button variant="outline" size="lg" onClick={onReset} className="gap-2" disabled={fixing}>
             <RotateCcw className="h-4 w-4" />
             {t("tryAnother")}
           </Button>
+        </div>
+
+        {/* Fix — refine the current result */}
+        <div className="flex flex-col items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleFix} className="gap-2" disabled={fixing}>
+            {fixing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {fixing ? t("fixing") : t("fix")}
+          </Button>
+          <p className="text-xs text-muted-foreground">{t("fixHint")}</p>
         </div>
 
         {/* Regenerate — separated with hint */}
         {onRegenerate && (
           <div className="flex flex-col items-center gap-2 pt-1 border-t border-border">
             <p className="text-xs text-muted-foreground">{regenHint}</p>
-            <Button variant="outline" size="sm" onClick={onRegenerate} className="gap-2">
+            <Button variant="outline" size="sm" onClick={onRegenerate} className="gap-2" disabled={fixing}>
               <RefreshCw className="h-3.5 w-3.5" />
               {t("regenerate")}
             </Button>
@@ -139,7 +191,7 @@ export default function ResultStep({ result, productName, onReset, onRegenerate,
         )}
 
         <p className="text-xs text-muted-foreground text-center">
-          {t("poweredBy")} <span className="font-medium text-foreground">Furora</span> &amp; Gemini AI
+          {t("poweredBy")} <span className="font-medium text-foreground">Furora</span> &amp; AI
         </p>
       </main>
     </div>
