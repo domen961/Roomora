@@ -1,4 +1,7 @@
-const GEMINI_MODEL = "gemini-2.5-flash-image";
+// Image model. Switched to Gemini 3 Pro Image (Nano Banana Pro) for stronger editing/erase.
+// Revert to "gemini-2.5-flash-image" if cost/rate limits are a problem. NOTE: 3 Pro Image has
+// NO free tier — the VITE_GEMINI_API_KEY's Google Cloud project must have billing enabled.
+const GEMINI_MODEL = "gemini-3-pro-image-preview";
 function getEndpoint() {
   const key = import.meta.env.VITE_GEMINI_API_KEY as string;
   if (!key) throw new Error("VITE_GEMINI_API_KEY is not set");
