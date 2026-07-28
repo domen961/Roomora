@@ -1029,112 +1029,66 @@ export async function placeInRoom(
     ? ` Real-world dimensions:${dimensions?.length_cm ? ` L${dimensions.length_cm}cm` : ""}${dimensions?.width_cm ? ` W${dimensions.width_cm}cm` : ""}${dimensions?.height_cm ? ` H${dimensions.height_cm}cm` : ""}.`
     : "";
 
-  // ── CALL 1: ERASE + Claude room measurement (run in parallel) ────────────────
-  // Product image prep intentionally runs AFTER allSettled so it can use camera_tilt_deg.
+  // ── Room measurement (scale) + product prep, in parallel ─────────────────────
   const isSofa = eraseLabel === "sofa";
-  const erasePrompt =
-    `FRAMING RULE (non-negotiable): the output must have the EXACT same crop, field of view, and aspect ratio as the input. Do NOT zoom, pan, or reframe in any way.\n\n` +
-    `Edit this room photo: remove every ${eraseLabel} in it, ` +
-    (isSofa
-      ? `INCLUDING large L-shaped, corner and sectional sofas. Remove EVERY connected upholstered seating section — the chaise lounge and corner modules that form the L or U shape — regardless of colour, shadow, or anything draped over it (blankets, throws, pillows). A blanket-covered section is still part of the sofa; do not mistake it for a separate object and leave it. CRITICAL: this also includes any section of the sofa that sits close to the camera in the FOREGROUND, or that is CUT OFF by the edge of the frame — a sofa section running off the edge of the photo, or looming large in a corner of the frame, is still part of the same sofa even though only a fragment is visible; remove that fragment completely too, do not leave it behind as if it were a different object. `
-      : `including any connected sections or modules of it. `) +
-    `Remove ALL of it — every cushion, back panel, armrest, base and leg — down to the bare floor. Fill the vacated floor and wall area with realistic textures that blend seamlessly with the surroundings — no smearing, no ghost outlines, no blank patches. Leaving any part of the ${eraseLabel} behind is a FAILURE.\n\n` +
-    `Do NOT remove or alter any OTHER object — keep ${otherTypes}, coffee and side tables, rugs, plants, curtains, lamps, artwork and decorations exactly as they are. Do not "clear the area" to make space. If there is genuinely no ${eraseLabel} in the room, return the photo unchanged.\n\n` +
-    `Output only the edited photo. No text.`;
 
-  // Room-measurement layer (detection gating + scale/perspective notes + camera-tilt
-  // warp). A diagnostic with this disabled confirmed it is NOT the cause of furniture
-  // loss, and that it is in fact needed for the sofa swap to occur at all.
-  const USE_CLAUDE_MEASURE = true;
-
-  const eraseParts: unknown[] = [
-    { text: erasePrompt },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-  ];
-
-  const [eraseResult, measureResult] = await Promise.allSettled([
-    callGemini(eraseParts),
-    USE_CLAUDE_MEASURE
-      ? measureRoom(roomResized)
-      : Promise.resolve<RoomMeasurement | null>(null),
+  const [measurement, productResized] = await Promise.all([
+    measureRoom(roomResized),
+    (async () => {
+      const urls = productImages.length > 0
+        ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
+        : [];
+      return Promise.all(urls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)));
+    })(),
   ]);
-
-  const measurement = measureResult.status === "fulfilled" ? measureResult.value : null;
-
-  // ── Product image prep: the two standard product photos as references ────────
-  const productDataUrls = productImages.length > 0
-    ? await Promise.all(productImages.slice(0, 2).map(toDataUrl))
-    : [];
-  const productResized = await Promise.all(
-    productDataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
-  );
-
-  // Only use the erase result if Claude confirmed the target furniture type is present.
-  // - measurement === null  → Claude API failed entirely → fall back (use erase result, old behaviour)
-  // - detected_furniture: [] → Claude checked, found nothing → SKIP erase (nothing of that type exists)
-  // - detected_furniture contains eraseLabel → target is present → use erase result
-  const targetPresent =
-    measurement === null                       // Claude API failed entirely → fall back
-    || measurement.detected_furniture.some(
-         (f) => f.toLowerCase().includes(eraseLabel) || eraseLabel.includes(f.toLowerCase())
-       );
-
-  console.log(`[Furora] BUILD v3 · erase-decision: targetPresent=${targetPresent}, eraseCall=${eraseResult.status}, detected=${JSON.stringify(measurement?.detected_furniture ?? null)}`);
-
-  // Erase — SINGLE pass (no escalation). Gemini 3 Pro is a far stronger editor than 2.5 Flash,
-  // so the escalating verify-retry loop (built for Flash's plateau on big L-sectionals, and
-  // costly at 3 Pro's per-call price) is disabled — just one erase call. If 3 Pro turns out to
-  // leave sofas, the escalation is preserved in git history (commit 3cdb7df) to bring back.
-  let emptyRoom = roomResized;
-  if (targetPresent && eraseResult.status === "fulfilled") {
-    emptyRoom = await cropToRatio(eraseResult.value, origW, origH);
-  }
 
   const scaleNote = buildScaleNote(measurement, dimensions, category ?? eraseLabel);
   console.log(`[Furora] scale: refs=${JSON.stringify(measurement?.visible_refs ?? null)} ·${scaleNote || " (none)"}`);
 
-  // ── CALL 2: PLACE — put the product into the EMPTY ROOM ──────────────────────
-  // Old proven approach: feed the clean empty room + the product photos, and ask for a
-  // simple CLEAR → PLACE → INTEGRATE edit. No framing-master, no retry loop, no swap.
   const persp = productResized[0] ?? null;
   const front = productResized[1] ?? null;
 
-  const placeParts: unknown[] = [
+  // ── SINGLE COMBINED CALL — edit the ORIGINAL room in place: swap the furniture,
+  // keep the camera. No separate erase / empty-room intermediate (that regenerated step is
+  // what let 3 Pro straighten the shot). One Gemini call = cheapest + best framing fidelity.
+  const sectionalClause = isSofa
+    ? ` This includes any L-shaped, corner, chaise or sectional section, anything draped over it (blankets, throws, pillows), and any part looming in the foreground or cut off by the frame edge — remove ALL of it.`
+    : "";
+
+  const parts: unknown[] = [
     { text:
-      `TASK: This is a precise PHOTO EDIT of an existing room photo — NOT image generation, NOT a catalogue render. ` +
-      `The FIRST image below is the ROOM. Your output must be THAT EXACT photo with only ONE change: the ${productLabel.toLowerCase()} is placed into it. ` +
-      `Preserve everything else pixel-for-pixel — the CAMERA ANGLE and PERSPECTIVE, the crop and field of view, the walls, floor, window, curtains, artwork, rug, tables, lamps, lighting and shadows must all stay exactly as they are in the ROOM photo. ` +
-      `Do NOT re-render the scene from a new viewpoint, do NOT straighten the camera, do NOT zoom, pan or reframe.` },
-    { text: `ROOM — the base image to edit (preserve its camera and every object except the replaced ${eraseLabel}):` },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(emptyRoom) } },
+      `TASK: This is a precise PHOTO EDIT of the room photo below — NOT image generation, NOT a catalogue render. ` +
+      `Take the FIRST image (the ROOM) and change ONE thing: replace the existing ${eraseLabel} with the ${productLabel} shown in the reference photo(s). ` +
+      `Everything else must stay pixel-for-pixel identical to the ROOM photo — ABOVE ALL the CAMERA ANGLE and PERSPECTIVE, plus the crop, field of view, walls, floor, window, curtains, artwork, rug, tables, lamps, lighting and shadows. ` +
+      `The result must look like the SAME photograph taken from the SAME spot, just with a different ${eraseLabel}. Do NOT re-render from a new viewpoint, do NOT straighten or level the camera, do NOT zoom, pan or reframe.` },
+    { text: `ROOM — the exact photo to edit (keep its camera and every object except the ${eraseLabel}):` },
+    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
   ];
   if (persp || front) {
-    placeParts.push({ text:
-      `The next photo(s) are APPEARANCE REFERENCE ONLY for the ${productLabel} to place — use them solely for its material, colour, shape, proportions and details. ` +
+    parts.push({ text:
+      `The next photo(s) are APPEARANCE REFERENCE ONLY for the ${productLabel} — use them solely for its material, colour, shape, proportions and details. ` +
       `IGNORE their studio/white background, their lighting, and ESPECIALLY their camera angle. ` +
-      `Do NOT copy the product photo's straight-on viewpoint — the ${productLabel.toLowerCase()} in your output must be seen from the ROOM's camera angle, matching the room's perspective and its floor and wall lines.` });
-    if (persp) placeParts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } });
-    if (front) placeParts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } });
+      `Do NOT copy the product photo's straight-on viewpoint — render the ${productLabel.toLowerCase()} from the ROOM's camera angle, matching the room's perspective and its floor and wall lines.` });
+    if (persp) parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } });
+    if (front) parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } });
   }
-  placeParts.push(
-    { text:
-      `Now edit the ROOM image:\n` +
-      `STEP 1 — CLEAR: if ANY piece of the old ${eraseLabel} is still visible — especially a section in the FOREGROUND close to the camera, or one CUT OFF by the edge of the frame — erase it completely and fill the space with realistic floor, rug and wall that match the surroundings. A fragment running off the photo edge is still part of the old ${eraseLabel}; remove all of it.\n` +
-      `STEP 2 — PLACE: add the ${productLabel.toLowerCase()} using the appearance references. Copy its exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. Put it in the SAME spot and orientation the old ${eraseLabel} had — against the same wall, facing the same way, back parallel to that wall, CENTERED on the footprint the old ${eraseLabel} occupied. It must sit flat and squarely grounded on the floor, rendered from the ROOM's camera angle (never the product photo's angle).\n` +
-      `SHAPE FIDELITY — CRITICAL: place EXACTLY ONE ${productLabel.toLowerCase()} with the SAME shape, size and configuration as the reference photos. If the reference shows a straight two-seater, the result must be a straight two-seater. Do NOT duplicate, mirror, extend, add seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the old ${eraseLabel} was bigger or L-shaped. If it is smaller than the area the old furniture occupied, that is fine — leave the rest as plain empty floor.\n` +
-      `STEP 3 — INTEGRATE: scale it realistically to the room.${dimNote}${scaleNote} Match its lighting and shadows to the room's own light sources, and add a soft contact shadow beneath it.\n` +
-      `KEEP THE ROOM AS-IS: do NOT add or invent any other furniture, plants, lamps, rugs or decor, and do NOT restage, redecorate or relight the rest of the room. Every other object stays exactly as in the ROOM photo. This is a factual edit of THIS room, not a styled catalogue photo.\n` +
-      `FRAMING (repeated, non-negotiable): identical camera angle, perspective, crop and framing to the ROOM image. No new viewpoint, no straightening, no zoom, no reframe. Output only the final edited photo. No text.` },
-  );
+  parts.push({ text:
+    `Editing steps:\n` +
+    `1 — REMOVE the existing ${eraseLabel} completely: every cushion, back, armrest, base and leg, down to the bare floor.${sectionalClause} Fill the vacated floor and wall with textures that blend seamlessly. If the room has no ${eraseLabel}, skip removal and just add the new one in a natural open spot on the floor.\n` +
+    `2 — PLACE the ${productLabel} where the old ${eraseLabel} stood — same spot, against the same wall, back parallel to that wall, CENTERED on its footprint. Copy the reference's exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. It must sit flat and squarely grounded on the floor, rendered from the ROOM's camera angle (never the product photo's straight-on angle).\n` +
+    `SHAPE FIDELITY — exactly ONE ${productLabel.toLowerCase()}, the SAME shape and configuration as the references. Do NOT duplicate, mirror, extend, add seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the old ${eraseLabel} was bigger or L-shaped. Smaller than the old furniture is fine — leave the extra as plain empty floor.\n` +
+    `SCALE — realistic to the room.${dimNote}${scaleNote}\n` +
+    `KEEP EVERYTHING ELSE identical to the ROOM photo — keep ${otherTypes}, tables, rugs, plants, curtains, lamps and artwork exactly as they are; no restaging, no new decor, no relighting, and above all NO camera change. Match the new ${eraseLabel}'s lighting and shadows to the room and add a soft contact shadow beneath it.\n` +
+    `Output only the final edited photo. No text.` });
 
-  // Place, with a single retry if the first result no-ops (returns the empty room ~unchanged).
-  let raw = await callGemini(placeParts);
+  // Single call, with one retry if it no-ops (returns the room ~unchanged).
+  let raw = await callGemini(parts);
   try {
-    const diff = await imageMeanDiff(raw, emptyRoom);
-    console.log(`[Furora] place: diff vs empty room = ${diff.toFixed(1)}`);
+    const diff = await imageMeanDiff(raw, roomResized);
+    console.log(`[Furora] combined: diff vs room = ${diff.toFixed(1)}`);
     if (diff < 8) {
-      console.warn(`[Furora] place looks like a no-op — retrying once`);
-      raw = await callGemini(placeParts);
+      console.warn(`[Furora] combined looks like a no-op — retrying once`);
+      raw = await callGemini(parts);
     }
   } catch { /* diff is best-effort */ }
 
