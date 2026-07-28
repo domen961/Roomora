@@ -8,6 +8,11 @@ function getEndpoint() {
   return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
 }
 
+// Which image model powers placeInRoom's edit. GPT (gpt-image-1) preserves the room's camera
+// as a true surgical editor; Gemini straightened it. Flip to "gemini" to A/B.
+type ImageProvider = "openai" | "gemini";
+const IMAGE_PROVIDER: ImageProvider = "openai";
+
 const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
 
 
@@ -287,6 +292,37 @@ async function callGemini(parts: unknown[]): Promise<string> {
 
   // Should never reach here — TypeScript requires an explicit throw
   throw new Error("Gemini: max retries exceeded");
+}
+
+/** Calls the OpenAI image-edit proxy (gpt-image-1). Returns a data URL. */
+async function callOpenAIImage(promptText: string, images: string[], size: string): Promise<string> {
+  const res = await fetch("/api/openai-image", {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ prompt: promptText, images, size }),
+  });
+  if (!res.ok) {
+    const t = await res.text().catch(() => "");
+    throw new Error(`OpenAI image failed (${res.status}): ${t.slice(0, 200)}`);
+  }
+  const data = await res.json();
+  if (!data?.image) throw new Error("OpenAI image: empty response");
+  return data.image as string;
+}
+
+/**
+ * Provider-agnostic single-image edit: one prompt + ordered images (room first, then product
+ * references). Routes to gpt-image-1 (default) or Gemini for A/B.
+ */
+async function generateImage(
+  promptText: string, images: string[], size: string, provider: ImageProvider = IMAGE_PROVIDER,
+): Promise<string> {
+  if (provider === "openai") return callOpenAIImage(promptText, images, size);
+  const parts: unknown[] = [
+    { text: promptText },
+    ...images.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
+  ];
+  return callGemini(parts);
 }
 
 export interface ProductDimensions {
@@ -1048,47 +1084,34 @@ export async function placeInRoom(
   const persp = productResized[0] ?? null;
   const front = productResized[1] ?? null;
 
-  // ── SINGLE COMBINED CALL — edit the ORIGINAL room in place: swap the furniture,
-  // keep the camera. No separate erase / empty-room intermediate (that regenerated step is
-  // what let 3 Pro straighten the shot). One Gemini call = cheapest + best framing fidelity.
+  // ── SINGLE COMBINED EDIT — swap the furniture in the ORIGINAL room, keep the camera.
+  // One prompt + ordered images (room first, then product references). Routed to the active
+  // image provider (gpt-image-1 by default — it preserves the room's camera as a true editor).
   const sectionalClause = isSofa
     ? ` This includes any L-shaped, corner, chaise or sectional section, anything draped over it (blankets, throws, pillows), and any part looming in the foreground or cut off by the frame edge — remove ALL of it.`
     : "";
+  const refCount = (persp ? 1 : 0) + (front ? 1 : 0);
 
-  const parts: unknown[] = [
-    { text:
-      `TASK: This is a precise PHOTO EDIT of the room photo below — NOT image generation, NOT a catalogue render. ` +
-      `Take the FIRST image (the ROOM) and change ONE thing: replace the existing ${eraseLabel} with the ${productLabel} shown in the reference photo(s). ` +
-      `Everything else must stay pixel-for-pixel identical to the ROOM photo — ABOVE ALL the CAMERA ANGLE and PERSPECTIVE, plus the crop, field of view, walls, floor, window, curtains, artwork, rug, tables, lamps, lighting and shadows. ` +
-      `The result must look like the SAME photograph taken from the SAME spot, just with a different ${eraseLabel}. Do NOT re-render from a new viewpoint, do NOT straighten or level the camera, do NOT zoom, pan or reframe.` },
-    { text: `ROOM — the exact photo to edit (keep its camera and every object except the ${eraseLabel}):` },
-    { inlineData: { mimeType: "image/jpeg", data: stripPrefix(roomResized) } },
-  ];
-  if (persp || front) {
-    parts.push({ text:
-      `The next photo(s) are APPEARANCE REFERENCE ONLY for the ${productLabel} — use them solely for its material, colour, shape, proportions and details. ` +
-      `IGNORE their studio/white background, their lighting, and ESPECIALLY their camera angle. ` +
-      `Do NOT copy the product photo's straight-on viewpoint — render the ${productLabel.toLowerCase()} from the ROOM's camera angle, matching the room's perspective and its floor and wall lines.` });
-    if (persp) parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(persp) } });
-    if (front) parts.push({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(front) } });
-  }
-  parts.push({ text:
-    `Editing steps:\n` +
-    `1 — REMOVE the existing ${eraseLabel} completely: every cushion, back, armrest, base and leg, down to the bare floor.${sectionalClause} Fill the vacated floor and wall with textures that blend seamlessly. If the room has no ${eraseLabel}, skip removal and just add the new one in a natural open spot on the floor.\n` +
-    `2 — PLACE the ${productLabel} where the old ${eraseLabel} stood — same spot, against the same wall, back parallel to that wall, CENTERED on its footprint. Copy the reference's exact material, colour, shape and details${productDescription ? ` (${productDescription})` : ""}. It must sit flat and squarely grounded on the floor, rendered from the ROOM's camera angle (never the product photo's straight-on angle).\n` +
-    `SHAPE FIDELITY — exactly ONE ${productLabel.toLowerCase()}, the SAME shape and configuration as the references. Do NOT duplicate, mirror, extend, add seats/modules, or reshape it into a larger, corner, L-shaped or sectional arrangement — even if the old ${eraseLabel} was bigger or L-shaped. Smaller than the old furniture is fine — leave the extra as plain empty floor.\n` +
-    `SCALE — realistic to the room.${dimNote}${scaleNote}\n` +
-    `KEEP EVERYTHING ELSE identical to the ROOM photo — keep ${otherTypes}, tables, rugs, plants, curtains, lamps and artwork exactly as they are; no restaging, no new decor, no relighting, and above all NO camera change. Match the new ${eraseLabel}'s lighting and shadows to the room and add a soft contact shadow beneath it.\n` +
-    `Output only the final edited photo. No text.` });
+  const promptText =
+    `You are editing the FIRST image, a photo of a real room.` +
+    (refCount ? ` The other ${refCount === 1 ? "image is a reference photo" : "images are reference photos"} of a ${productLabel} to place into that room.` : ``) + `\n\n` +
+    `Replace the existing ${eraseLabel} in the room with the ${productLabel}. Erase the old ${eraseLabel} completely${sectionalClause} and place the ${productLabel} in the same spot — against the same wall, centered on the footprint the old ${eraseLabel} occupied.` +
+    (productDescription ? ` (${productDescription})` : ``) +
+    (refCount ? ` Use the reference photo(s) ONLY for the ${productLabel}'s appearance — its material, colour, shape and proportions; ignore their background, lighting and camera angle.` : ``) + `\n\n` +
+    `CRITICAL: keep the original room photo EXACTLY as it is otherwise — the SAME camera angle, perspective and framing, and every other object (walls, floor, window, curtains, artwork, rug, tables, lamps, lighting and shadows). Keep ${otherTypes} untouched. The output must look like the same photograph, pixel-perfect, with only the ${eraseLabel} swapped. Do NOT re-render, straighten, zoom or reframe.\n\n` +
+    `Place exactly ONE ${productLabel} with the same shape and configuration as the reference — do not duplicate, extend, or reshape it into a larger/L-shaped/sectional arrangement even if the old ${eraseLabel} was bigger. If it is smaller than the old furniture, leave the extra as empty floor. Ground it flat on the floor with a soft contact shadow, matching the room's lighting.${dimNote}${scaleNote}`;
+
+  const images = [roomResized, ...(persp ? [persp] : []), ...(front ? [front] : [])];
+  const size = origW > origH ? "1536x1024" : origW < origH ? "1024x1536" : "1024x1024";
 
   // Single call, with one retry if it no-ops (returns the room ~unchanged).
-  let raw = await callGemini(parts);
+  let raw = await generateImage(promptText, images, size);
   try {
     const diff = await imageMeanDiff(raw, roomResized);
-    console.log(`[Furora] combined: diff vs room = ${diff.toFixed(1)}`);
+    console.log(`[Furora] combined(${IMAGE_PROVIDER}): diff vs room = ${diff.toFixed(1)}`);
     if (diff < 8) {
       console.warn(`[Furora] combined looks like a no-op — retrying once`);
-      raw = await callGemini(parts);
+      raw = await generateImage(promptText, images, size);
     }
   } catch { /* diff is best-effort */ }
 
