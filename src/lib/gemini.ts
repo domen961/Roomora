@@ -1,19 +1,5 @@
-// Image model. Switched to Gemini 3 Pro Image (Nano Banana Pro) for stronger editing/erase.
-// Revert to "gemini-2.5-flash-image" if cost/rate limits are a problem. NOTE: 3 Pro Image has
-// NO free tier — the VITE_GEMINI_API_KEY's Google Cloud project must have billing enabled.
-const GEMINI_MODEL = "gemini-3-pro-image-preview";
-function getEndpoint() {
-  const key = import.meta.env.VITE_GEMINI_API_KEY as string;
-  if (!key) throw new Error("VITE_GEMINI_API_KEY is not set");
-  return `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${key}`;
-}
-
-// Which image model powers placeInRoom's edit. GPT (gpt-image-1) preserves the room's camera
-// as a true surgical editor; Gemini straightened it. Flip to "gemini" to A/B.
-type ImageProvider = "openai" | "gemini";
-const IMAGE_PROVIDER: ImageProvider = "openai";
-
-const stripPrefix = (b64: string) => b64.replace(/^data:[^;]+;base64,/, "");
+// All image generation runs on OpenAI gpt-image-2 (server proxy /api/openai-image). Gemini was
+// fully removed — no client-exposed key, no Google dependency.
 
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -215,86 +201,7 @@ async function prepareProductImage(src: string, maxW: number, maxH: number, qual
   }
 }
 
-async function callGemini(parts: unknown[]): Promise<string> {
-  const MAX_RETRIES = 4;
-  // Exponential back-off delays for 429: 5 s, 10 s, 20 s, 40 s
-  const BACKOFF_MS = [5_000, 10_000, 20_000, 40_000];
-
-  const body = {
-    contents: [{ role: "user", parts }],
-    generationConfig: { responseModalities: ["IMAGE", "TEXT"] },
-  };
-
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 90_000); // 90 s per attempt
-
-    try {
-      const res = await fetch(getEndpoint(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      // Rate-limited — check whether it's daily quota or per-minute spike
-      if (res.status === 429) {
-        const errText = await res.text();
-        console.warn("callGemini 429 body:", errText.slice(0, 300));
-
-        // Daily/project quota exhausted — retrying won't help until reset
-        const isQuotaExhausted =
-          errText.includes("per_day") ||
-          errText.includes("daily") ||
-          errText.includes("RESOURCE_EXHAUSTED");
-
-        if (isQuotaExhausted && attempt === 0) {
-          // First hit on a quota-exhausted error → fail fast with a clear message
-          throw new Error(
-            "Gemini quota exhausted — your free daily limit has been reached. " +
-            "Check https://aistudio.google.com for quota status or use a paid API key. " +
-            "Quota resets at midnight Pacific time.",
-          );
-        }
-
-        if (attempt >= MAX_RETRIES) {
-          throw new Error(
-            "Gemini rate limit (429) — too many requests. Wait a minute and try again.",
-          );
-        }
-        const delay = BACKOFF_MS[attempt] ?? 40_000;
-        console.warn(`callGemini: 429 rate limit, retrying in ${delay / 1000}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
-        clearTimeout(timer);
-        await new Promise((r) => setTimeout(r, delay));
-        continue; // next iteration of the loop
-      }
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Gemini API ${res.status}: ${text}`);
-      }
-
-      const data = await res.json();
-      const responseParts: unknown[] = data?.candidates?.[0]?.content?.parts ?? [];
-      const imgPart = responseParts.find((p: any) => typeof p?.inlineData?.data === "string") as any;
-      if (!imgPart) throw new Error("No image returned by Gemini");
-
-      return `data:${imgPart.inlineData.mimeType};base64,${imgPart.inlineData.data}`;
-    } catch (err) {
-      if ((err as Error).name === "AbortError") {
-        throw new Error("Generation timed out after 90 s — please try again");
-      }
-      throw err;
-    } finally {
-      clearTimeout(timer);
-    }
-  }
-
-  // Should never reach here — TypeScript requires an explicit throw
-  throw new Error("Gemini: max retries exceeded");
-}
-
-/** Calls the OpenAI image-edit proxy (gpt-image-1). Returns a data URL. */
+/** Calls the OpenAI image-edit proxy (gpt-image-2). Returns a data URL. */
 async function callOpenAIImage(promptText: string, images: string[], size: string): Promise<string> {
   const res = await fetch("/api/openai-image", {
     method:  "POST",
@@ -310,19 +217,20 @@ async function callOpenAIImage(promptText: string, images: string[], size: strin
   return data.image as string;
 }
 
+/** Single-image edit: one prompt + ordered images (room first, then product references). */
+async function generateImage(promptText: string, images: string[], size: string): Promise<string> {
+  return callOpenAIImage(promptText, images, size);
+}
+
 /**
- * Provider-agnostic single-image edit: one prompt + ordered images (room first, then product
- * references). Routes to gpt-image-1 (default) or Gemini for A/B.
+ * DEPRECATED / inert. The 75° "top view" alt-view generation ran on Gemini and its output
+ * (image_2/image_3) is no longer used at placement time. Kept as a stub so the admin UI still
+ * compiles; the "AI top views" section in ProductForm is now inert. TODO: remove that UI.
  */
-async function generateImage(
-  promptText: string, images: string[], size: string, provider: ImageProvider = IMAGE_PROVIDER,
+export async function generateProductAltView(
+  _productImgs: string[], _furnitureType: string, _variant: "perspective" | "front" = "perspective",
 ): Promise<string> {
-  if (provider === "openai") return callOpenAIImage(promptText, images, size);
-  const parts: unknown[] = [
-    { text: promptText },
-    ...images.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })),
-  ];
-  return callGemini(parts);
+  throw new Error("alt-view generation removed");
 }
 
 export type RefineMode = "straighten" | "floor";
@@ -543,61 +451,6 @@ function buildScaleNote(m: RoomMeasurement | null, dims?: ProductDimensions, cat
 }
 
 /**
- * Generates a steep-angle (75° elevation) view of a product using Gemini Image.
- * Called automatically when photos are added in the admin panel; results are stored in
- * Supabase as `image_2` (perspective alt) and `image_3` (front alt). At placement time
- * `placeInRoom` uses them as extra reference images so Gemini can composite from the
- * room's steep camera without having to extrapolate perspective from flat product photos.
- *
- * @param productImgs   Supabase storage URLs or data URLs of the product (perspective + front)
- * @param furnitureType e.g. "chair", "sofa", "table" — used in the generation prompt
- * @param variant       "perspective" = diagonal overhead view; "front" = straight-on overhead
- */
-export async function generateProductAltView(
-  productImgs: string[],
-  furnitureType: string,
-  variant: "perspective" | "front" = "perspective",
-): Promise<string> {
-  const dataUrls = await Promise.all(productImgs.slice(0, 2).map(toDataUrl));
-  const prepared = await Promise.all(
-    dataUrls.map((img) => prepareProductImage(img, 1024, 1024, 0.92)),
-  );
-
-  const perspPrompt =
-    `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-    `elevated at approximately 75° above horizontal — almost directly overhead, ` +
-    `from a slightly diagonal (3/4) angle. ` +
-    `The top surface (seat/cushion/tabletop) should dominate the frame; ` +
-    `legs or base visible only as short stubs at the corners spreading slightly outward. ` +
-    `Keep the model, materials, colours, stitching details, and proportions ` +
-    `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context.`;
-
-  const frontPrompt =
-    `You receive photos of a ${furnitureType}. ` +
-    `Synthesise ONE new photo of this exact same ${furnitureType} as seen from a camera ` +
-    `elevated at approximately 75° above horizontal, positioned directly in front of the furniture — ` +
-    `looking steeply down at the front face from above. ` +
-    `The front face is visible at the bottom of the frame, heavily foreshortened; ` +
-    `the top surface occupies most of the upper portion of the frame. ` +
-    `Legs visible only at the bottom corners as short stubs. ` +
-    `Keep the model, materials, colours, stitching details, and proportions ` +
-    `IDENTICAL to the reference photos. ` +
-    `White background. Single object only, centred. No shadows, no room context.`;
-
-  const prompt = variant === "front" ? frontPrompt : perspPrompt;
-
-  const parts: unknown[] = [
-    { text: prompt },
-    ...prepared.map((img) => ({
-      inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) },
-    })),
-  ];
-  return callGemini(parts);
-}
-
-/**
  * Renders a 200×200 solid-color JPEG swatch from a hex string.
  * Included in every color-variant Gemini call as an absolute visual anchor
  * so all 4 slots interpret the target color identically regardless of angle/lighting.
@@ -672,136 +525,50 @@ export async function generateVariant(
     p.modification.type === "color" ? createColorSwatch(p.modification.hexColor) : null,
   );
 
-  // ── Build Gemini parts array for direct modification (slot 0 / master) ──────
-  // Sends: product photo + color swatches. Gemini interprets the hex/description
-  // and applies the changes directly. Works well on perspective-view product photos.
-  const buildGeminiParts = (prepared: string): unknown[] => {
-    const refImages: string[] = [];
-    parts.forEach((_, i) => {
-      const img = swatches[i] ?? textures[i];
-      if (img) refImages.push(img);
-    });
+  // Build one edit prompt + reference images (product photo + swatches/textures) for gpt-image-2.
+  const refImages: string[] = [];
+  parts.forEach((_, i) => {
+    const img = swatches[i] ?? textures[i];
+    if (img) refImages.push(img);
+  });
 
-    let imgSlot = 2; // image 1 = product photo; image 2+ = swatches/textures
-    const changeLines = parts.map((p, i) => {
-      const ref  = swatches[i] ?? textures[i];
-      const desc = p.modification.type === "color"
-        ? (p.modification.description?.trim()
-            ? `${p.modification.description.trim()} — exact hex ${p.modification.hexColor}`
-            : `color ${p.modification.hexColor}`)
-        : "texture from the reference image";
-      const swatchNote = ref
-        ? ` (image ${imgSlot} = ${swatches[i] ? "exact solid-color swatch — match this color precisely" : "texture sample — apply this material"})`
-        : "";
-      if (ref) imgSlot++;
-      return `• ${p.targetPart}: recolor to ${desc}${swatchNote}`;
-    });
+  let imgSlot = 2; // image 1 = product photo; image 2+ = swatches/textures
+  const changeLines = parts.map((p, i) => {
+    const ref  = swatches[i] ?? textures[i];
+    const desc = p.modification.type === "color"
+      ? (p.modification.description?.trim()
+          ? `${p.modification.description.trim()} — exact hex ${p.modification.hexColor}`
+          : `color ${p.modification.hexColor}`)
+      : "texture from the reference image";
+    const swatchNote = ref
+      ? ` (image ${imgSlot} = ${swatches[i] ? "exact solid-color swatch — match this color precisely" : "texture sample — apply this material"})`
+      : "";
+    if (ref) imgSlot++;
+    return `• ${p.targetPart}: recolor to ${desc}${swatchNote}`;
+  });
+  const many = parts.length > 1;
 
-    const many = parts.length > 1;
-    // Framing master = same image as image 1, sent again as the last image.
-    // Gemini gets a pixel-level visual ruler it cannot ignore (same technique
-    // that fixed zoom/pan in room placement).
-    const framingSlot = 2 + refImages.length; // image 1 + swatches + framing master
+  const prompt =
+    `You are editing image 1, a product photo of a ${furnitureType}, for a furniture retailer. ` +
+    `Apply the customer's colour/texture selections exactly.\n` +
+    (refImages.length ? `Images 2–${1 + refImages.length} are colour swatches or texture samples for the changes below.\n` : "") +
+    `\nSelections (apply ALL — none optional):\n${changeLines.join("\n")}\n\n` +
+    `Requirements:\n` +
+    `- Every listed part MUST change; leave none in the original colour. When a part means the whole piece (e.g. "whole sofa"), recolour EVERY visible surface — body, seat and back cushions, armrests, side panels, loose pieces.\n` +
+    `- Recolour ONLY the listed part${many ? "s" : ""}; all other surfaces stay exactly as in image 1.\n` +
+    `- Match the swatch hue and lightness exactly; fully replace the old colour (no ghosting), applied like a painted/lacquered finish — a brand-new hue, but the underlying grain, surface relief and original shading stay visible.\n` +
+    `- Keep the original lighting, exposure, proportions, camera angle, framing and white background. Output only the edited product photo.`;
 
-    const prompt =
-      `You are generating a product photo variant for a furniture retailer. ` +
-      `A customer has chosen specific colors/textures for parts of this ${furnitureType}. ` +
-      `Your task: apply the customer's selections exactly as specified.\n\n` +
-      `Image 1 — ${furnitureType} product photo to modify.\n` +
-      (refImages.length
-        ? `Images 2–${1 + refImages.length} — color swatches or texture samples for the changes below.\n`
-        : "") +
-      `Image ${framingSlot} — FRAMING MASTER: the identical product photo included solely as a framing reference. ` +
-      `Your output must reproduce the exact pixel positions of the product — same distance from each edge, ` +
-      `same left-right position, same vertical placement. Do not shift, pan, crop, or reframe. ` +
-      `Ignore the colors in this image; use it only as a composition ruler.\n` +
-      `\nCustomer color selections (apply ALL of these — none are optional):\n` +
-      `${changeLines.join("\n")}\n\n` +
-      `Requirements:\n` +
-      `- Every part listed above MUST be recolored in the output. Do not leave any listed part unchanged.\n` +
-      `- When the target part refers to the whole furniture or a large section (e.g. "whole sofa", "entire chair", "the sofa"), apply the change to EVERY visible surface — main body, seat cushions, back cushions/pillows, armrests, side panels, and any separate loose pieces. No part of the furniture should remain in the original color.\n` +
-      `- Recolor ONLY the listed part${many ? "s" : ""}. All other surfaces stay exactly as in image 1.\n` +
-      `- Color accuracy is critical: match the swatch image${refImages.length > 1 ? "s" : ""} exactly — same hue, same lightness.\n` +
-      `- The new color must fully replace the original hue — no ghosting or bleed-through of the old color. Apply it like a painted or lacquered finish: the hue is completely new, but the underlying wood grain texture, surface relief, and highlight/shadow shading from the original material are preserved and visible through the new color.\n` +
-      `- Keep the original lighting, exposure, and brightness exactly — do not darken, brighten, or add dramatic studio lighting. Preserve shadows, proportions, and camera angle.\n` +
-      `- White background. No room context.\n` +
-      `Output: ONE product photo with all customer color selections applied. No text.`;
-
-    return [
-      { text: prompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },           // Image 1: to modify
-      ...refImages.map((img) => ({ inlineData: { mimeType: "image/jpeg", data: stripPrefix(img) } })), // swatches
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(prepared) } },           // Framing master
-    ];
-  };
-
-  // ── Build parts for 75° overhead angle synthesis (slots 2–3) ────────────────
-  // The 75° overhead views are synthesised FROM the already-colored slot-0 result
-  // rather than coloring the original overhead base images directly.
-  //
-  // Why: from 75° above, structural parts like legs appear as barely-visible stubs.
-  // Direct color modification fails (Gemini can't find the parts) and color-match
-  // copies the wrong camera angle. Angle synthesis from an already-correct image
-  // avoids both problems: colors are already right in the master, we only change
-  // the camera viewpoint.
-  const buildAltViewFromModifiedParts = (
-    masterResult: string,
-    variant: "perspective" | "front",
-  ): unknown[] => {
-    const partNames = parts.map((p) => p.targetPart).join(", ");
-
-    // Both variants are extreme overhead views — be very explicit so Gemini doesn't
-    // produce a shallow product-photo angle that looks like the slot-0 perspective.
-    const viewDesc = variant === "perspective"
-      ? "a NEARLY OVERHEAD bird's-eye view from a slight 3/4 diagonal. " +
-        "The camera is 75° above horizontal — almost straight down. " +
-        "The seat/top surface FILLS most of the frame; the backrest appears as a narrow strip at the far edge. " +
-        "The four legs are barely visible — tiny stubby projections at the bottom corners. " +
-        "This is NOT a standard product photo angle. It looks like a drone shot from directly above."
-      : "a NEARLY OVERHEAD bird's-eye view from directly in front. " +
-        "The camera is 75° above horizontal — almost straight down. " +
-        "The seat/top surface FILLS most of the frame; the front face of the backrest is a thin sliver at the bottom. " +
-        "The legs appear as tiny short stubs at the bottom corners only. " +
-        "This is NOT a standard product photo angle. It looks like a drone shot from above.";
-
-    const prompt =
-      `You receive a product photo of a ${furnitureType} with custom colors applied.\n` +
-      `Re-render this exact same ${furnitureType} from ${viewDesc}\n\n` +
-      `Critical requirements:\n` +
-      `- The camera angle MUST be a steep overhead view — 75° above horizontal. Do not produce a standard low-angle product photo.\n` +
-      `- Keep ALL colors and materials EXACTLY as shown in the input image — only the camera angle changes.\n` +
-      `- The custom colors on ${partNames} must be preserved exactly in the output.\n` +
-      `- Maintain the same material textures, surface finish, and proportions.\n` +
-      `- White background. Single object only, centred. No room context.\n` +
-      `Output: ONE product photo from the steep 75° overhead angle. No text.`;
-
-    return [
-      { text: prompt },
-      { inlineData: { mimeType: "image/jpeg", data: stripPrefix(masterResult) } },
-    ];
-  };
-
-  // ── Generate all 4 slots sequentially ───────────────────────────────────────
-  // Strategy:
-  //   Slots 0–1 (~28° views)  — direct modification: send base image + swatches.
-  //                             These views are standard product angles where all
-  //                             parts are clearly visible and direct mod works well.
-  //   Slots 2–3 (75° views)   — angle synthesis from slot-0 result: take the already-
-  //                             correctly-colored perspective result and ask Gemini to
-  //                             re-render it from 75° overhead. Colors are already right;
-  //                             we only ask Gemini to change the viewpoint, which it
-  //                             handles far better than recoloring tiny overhead stubs.
-  //   Fallback: if slot 0 fails, slots 2–3 fall back to direct modification.
+  // Only slots 0 and 1 are used by the app (revolver thumbnail + placement use the first two
+  // images). Generate them via gpt-image-2; the old 75° overhead slots (2/3) are no longer made.
   const results: (string | null)[] = [null, null, null, null];
-
-  // ── Slots 0 and 1: direct modification ──────────────────────────────────────
   for (const i of [0, 1]) {
     const img = dataUrls[i];
     if (!img) { onSlotReady?.(i, null); continue; }
     try {
       const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-      results[i] = await callGemini(buildGeminiParts(prepared)).catch((err) => {
-        console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
+      results[i] = await generateImage(prompt, [prepared, ...refImages], "auto").catch((err) => {
+        console.error(`generateVariant: slot ${i} failed:`, err instanceof Error ? err.message : err);
         return null;
       });
       onSlotReady?.(i, results[i]);
@@ -810,33 +577,9 @@ export async function generateVariant(
       onSlotReady?.(i, null);
     }
   }
-
-  // ── Slots 2 and 3: 75° angle synthesis from slot-0 result ────────────────────
-  for (const i of [2, 3]) {
-    const img = dataUrls[i];
-    if (!img) { onSlotReady?.(i, null); continue; }
-    try {
-      const masterRef = results[0];
-      let geminiParts: unknown[];
-      if (masterRef) {
-        // Preferred path: synthesise overhead angle from already-colored slot-0 result
-        const variant = i === 2 ? "perspective" : "front";
-        geminiParts = buildAltViewFromModifiedParts(masterRef, variant);
-      } else {
-        // Fallback: slot 0 failed — try direct modification on the overhead base image
-        const prepared = await prepareProductImage(img, 1024, 1024, 0.92);
-        geminiParts = buildGeminiParts(prepared);
-      }
-      results[i] = await callGemini(geminiParts).catch((err) => {
-        console.error(`generateVariant: callGemini slot ${i} failed:`, err instanceof Error ? err.message : err);
-        return null;
-      });
-      onSlotReady?.(i, results[i]);
-    } catch (err) {
-      console.error(`generateVariant: slot ${i} unexpected error:`, err instanceof Error ? err.message : err);
-      onSlotReady?.(i, null);
-    }
-  }
+  // Settle the unused slots so callers tracking completion don't wait forever.
+  onSlotReady?.(2, null);
+  onSlotReady?.(3, null);
 
   return results;
 }
@@ -1013,28 +756,28 @@ Page text:
 ${pageText}`;
 
   const callTextModel = async () => {
-    return fetch("/api/gemini-text", {
+    return fetch("/api/claude-text", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
   };
 
-  let geminiRes = await callTextModel();
+  let textRes = await callTextModel();
 
   // Retry once after 2s on overload / rate-limit
-  if (geminiRes.status === 503 || geminiRes.status === 429) {
+  if (textRes.status === 503 || textRes.status === 429) {
     await new Promise((r) => setTimeout(r, 2000));
-    geminiRes = await callTextModel();
+    textRes = await callTextModel();
   }
 
-  if (!geminiRes.ok) {
-    throw new Error(`Gemini ${geminiRes.status}: ${await geminiRes.text()}`);
+  if (!textRes.ok) {
+    throw new Error(`Extraction ${textRes.status}: ${await textRes.text()}`);
   }
 
-  const geminiData = await geminiRes.json();
-  const rawText    = geminiData?.text ?? "{}";
-  const json       = JSON.parse(rawText);
+  const textData = await textRes.json();
+  const rawText  = textData?.text ?? "{}";
+  const json     = JSON.parse(rawText);
 
   return {
     name:        json.name        ?? "",
@@ -1138,7 +881,7 @@ export async function placeInRoom(
   let raw = await generateImage(promptText, images, size);
   try {
     const diff = await imageMeanDiff(raw, roomResized);
-    console.log(`[Furora] combined(${IMAGE_PROVIDER}): diff vs room = ${diff.toFixed(1)}`);
+    console.log(`[Furora] combined(gpt-image-2): diff vs room = ${diff.toFixed(1)}`);
     if (diff < 8) {
       console.warn(`[Furora] combined looks like a no-op — retrying once`);
       raw = await generateImage(promptText, images, size);

@@ -323,11 +323,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const handleApply = useCallback(async () => {
     if (product.images.length === 0) return;
 
-    // Guard: Gemini key must be present (baked into bundle at build time)
-    if (!import.meta.env.VITE_GEMINI_API_KEY) {
-      setApplyError("Configuration error: VITE_GEMINI_API_KEY is not set in this deployment.");
-      return;
-    }
     setApplyError(null);
 
     // Build the parts array from all rows

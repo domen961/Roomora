@@ -62,7 +62,7 @@ export default function PrivacyPage() {
         <Section title="4. Room photos and AI processing">
           <p>
             Customer room photos are used solely to generate the requested preview. To do this, the photo is sent
-            to our AI processors — <strong className="text-foreground">Google (Gemini)</strong> for image generation and
+            to our AI processors — <strong className="text-foreground">OpenAI</strong> for image generation and
             <strong className="text-foreground"> Anthropic (Claude)</strong> for measurement/quality checks — and returned as an edited image.
           </p>
           <p>
@@ -77,8 +77,9 @@ export default function PrivacyPage() {
           <p>We rely on the following providers to run the service:</p>
           <ul className="list-disc pl-5 flex flex-col gap-1">
             <li><strong className="text-foreground">Supabase</strong> — authentication, database, and file storage.</li>
-            <li><strong className="text-foreground">Google</strong> — Gemini AI (image/text generation) and Google Sign-In.</li>
-            <li><strong className="text-foreground">Anthropic</strong> — Claude AI (room measurement and result verification).</li>
+            <li><strong className="text-foreground">OpenAI</strong> — image generation (gpt-image) for room previews and product variants.</li>
+            <li><strong className="text-foreground">Anthropic</strong> — Claude AI (room measurement, result verification, product data extraction).</li>
+            <li><strong className="text-foreground">Google</strong> — Google Sign-In (merchant login) only.</li>
             <li><strong className="text-foreground">Vercel</strong> — application hosting and serverless functions.</li>
           </ul>
           <p>Some of these providers may process data outside {COUNTRY} / the EEA. Where that happens, transfers are covered by appropriate safeguards such as Standard Contractual Clauses.</p>
