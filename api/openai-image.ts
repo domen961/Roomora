@@ -30,11 +30,11 @@ export default async function handler(req: any, res: any) {
 
   try {
     const form = new FormData();
-    form.append("model", "gpt-image-1");
+    form.append("model", "gpt-image-2");
     form.append("prompt", prompt);
     form.append("size", size || "auto");
     form.append("input_fidelity", "high");   // preserve fine detail of the input room
-    form.append("quality", "medium");        // medium = good + faster/cheaper; bump to "high" later
+    form.append("quality", "high");          // high = best fidelity for detailed products (slower/pricier)
     images.forEach((dataUrl, i) => {
       const conv = dataUrlToBlob(dataUrl);
       if (conv) form.append("image[]", conv.blob, `image_${i}.${conv.ext}`);
