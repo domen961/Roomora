@@ -54,7 +54,8 @@ export default async function handler(req: any, res: any) {
     const data = await r.json() as any;
     const b64 = data?.data?.[0]?.b64_json;
     if (!b64) return res.status(502).json({ error: "no image returned" });
-    return res.json({ image: `data:image/png;base64,${b64}` });
+    if (data?.usage) console.log("openai-image usage:", JSON.stringify(data.usage));
+    return res.json({ image: `data:image/png;base64,${b64}`, usage: data?.usage ?? null });
   } catch (err) {
     console.error("openai-image exception:", err);
     return res.status(500).json({ error: "openai image exception", detail: err instanceof Error ? err.message : String(err) });
