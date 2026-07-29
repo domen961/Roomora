@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Grid3x3, Wand2, Loader2 } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Grid3x3, Wand2, SlidersHorizontal, Loader2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
@@ -31,6 +31,7 @@ export default function ResultStep({ result, productName, category, merchantId, 
   const [busyLabel, setBusyLabel] = useState("");
   const [isHd, setIsHd] = useState(false);
   const [quotaMsg, setQuotaMsg] = useState("");
+  const [showOptions, setShowOptions] = useState(false);
   const shown = fixed ?? result;
 
   const handleFix = async (mode: RefineMode) => {
@@ -88,7 +89,7 @@ export default function ResultStep({ result, productName, category, merchantId, 
             </div>
           </div>
         )}
-        <div className="absolute bottom-0 left-0 right-0 h-56 bg-gradient-to-t from-black/80 to-transparent pointer-events-none" />
+        <div className="absolute bottom-0 left-0 right-0 h-44 bg-gradient-to-t from-black/85 to-transparent pointer-events-none" />
         <div className="absolute top-8 left-0 right-0 flex items-center justify-between px-6">
           <div className="w-10" /> {/* spacer */}
           <div className="pointer-events-none"><Logo /></div>
@@ -99,47 +100,53 @@ export default function ResultStep({ result, productName, category, merchantId, 
             <Share2 className="h-5 w-5 text-white" />
           </button>
         </div>
-        <div className="absolute bottom-10 left-0 right-0 flex flex-col items-center gap-3 px-6">
-          <p className="text-white/80 text-sm font-light">{t("heresRoom")}</p>
-          {/* Primary actions: Retry + Download */}
-          <div className="flex gap-3 w-full max-w-xs">
-            <button onClick={onReset} disabled={fixing}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
-              <RotateCcw className="h-4 w-4" />{t("retry")}
-            </button>
+        <div className="absolute bottom-7 left-0 right-0 flex flex-col items-center gap-2 px-6">
+          {/* Expandable options — only shown when the user taps Options */}
+          {showOptions && (
+            <div className="w-full max-w-xs flex flex-col gap-2 mb-1">
+              <div className="flex gap-2">
+                <button onClick={() => handleFix("straighten")} disabled={fixing}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+                  <Sparkles className="h-4 w-4" />{t("straighten")}
+                </button>
+                <button onClick={() => handleFix("floor")} disabled={fixing}
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+                  <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
+                </button>
+              </div>
+              {!isHd && (
+                <button onClick={() => handleFix("hd")} disabled={fixing}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/15 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+                  <Wand2 className="h-4 w-4" />{t("makeHd")}
+                </button>
+              )}
+              <button onClick={onReset} disabled={fixing}
+                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/75 active:scale-95 transition-transform disabled:opacity-50">
+                <RotateCcw className="h-4 w-4" />{t("retry")}
+              </button>
+              {quotaMsg && <p className="text-xs text-red-300 text-center">{quotaMsg}</p>}
+            </div>
+          )}
+
+          {/* Primary bar: Download · Again · Options */}
+          <div className="flex gap-2.5 w-full max-w-sm">
             <button onClick={handleDownload} disabled={fixing}
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform disabled:opacity-50">
               <Download className="h-4 w-4" />{t("download")}
             </button>
-          </div>
-          {/* Fix — targeted correction of the current result */}
-          <div className="flex gap-3 w-full max-w-xs">
-            <button onClick={() => handleFix("straighten")} disabled={fixing}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
-              <Sparkles className="h-4 w-4" />{t("straighten")}
-            </button>
-            <button onClick={() => handleFix("floor")} disabled={fixing}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-primary/40 bg-primary/10 backdrop-blur-sm py-2.5 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
-              <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
-            </button>
-          </div>
-          {/* HD — regenerate at full quality on demand */}
-          {!isHd && (
-            <button onClick={() => handleFix("hd")} disabled={fixing}
-              className="w-full max-w-xs flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/80 active:scale-95 transition-transform disabled:opacity-50">
-              <Wand2 className="h-4 w-4" />{t("makeHd")}
-            </button>
-          )}
-          {quotaMsg && <p className="text-xs text-red-300 text-center max-w-xs">{quotaMsg}</p>}
-          {/* Regenerate — separated with hint */}
-          {onRegenerate && (
-            <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
-              <p className="text-white/45 text-xs">{regenHint}</p>
+            {onRegenerate && (
               <button onClick={onRegenerate} disabled={fixing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/70 active:scale-95 transition-transform disabled:opacity-50">
-                <RefreshCw className="h-4 w-4" />{t("regenerate")}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+                <RefreshCw className="h-4 w-4" />{t("again")}
               </button>
-            </div>
+            )}
+            <button onClick={() => setShowOptions((v) => !v)} disabled={fixing} aria-expanded={showOptions} aria-label={t("moreOptions")}
+              className={`px-4 flex items-center justify-center rounded-xl border-2 backdrop-blur-sm py-3 active:scale-95 transition-transform disabled:opacity-50 ${showOptions ? "border-primary/60 bg-primary/20 text-white" : "border-white/40 bg-white/10 text-white"}`}>
+              <SlidersHorizontal className="h-4 w-4" />
+            </button>
+          </div>
+          {onRegenerate && freeRegenAvailable && !showOptions && (
+            <p className="text-white/45 text-[11px]">{regenHint}</p>
           )}
         </div>
       </div>

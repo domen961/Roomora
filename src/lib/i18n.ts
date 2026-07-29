@@ -61,6 +61,8 @@ const en = {
   makeHd:             "HD quality",
   generatingHd:       "Generating HD…",
   hdReady:            "HD version ready — download it below.",
+  again:              "Again",
+  moreOptions:        "More options",
   fixHint:            "Not quite right? Straighten the furniture or fix the floor.",
   poweredBy:          "Powered by",             // `${poweredBy} Furora & Gemini AI`
 };
@@ -109,6 +111,8 @@ const pl: Record<Keys, string> = {
   makeHd:             "Jakość HD",
   generatingHd:       "Generuję HD…",
   hdReady:            "Wersja HD gotowa — pobierz ją poniżej.",
+  again:              "Jeszcze raz",
+  moreOptions:        "Więcej opcji",
   fixHint:            "Nie do końca tak? Wyprostuj mebel lub popraw podłogę.",
   poweredBy:          "Obsługiwane przez",
 };
