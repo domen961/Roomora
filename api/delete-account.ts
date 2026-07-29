@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { rejectCrossOrigin } from "./_guard";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "1mb" } },
@@ -13,7 +12,7 @@ export const config = {
  */
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
-  if (rejectCrossOrigin(req, res)) return;
+  { const _o=String(req.headers.origin||req.headers.referer||""); let _h=""; try{_h=new URL(_o).host.toLowerCase();}catch{} if(!_h||_h!==String(req.headers.host||"").toLowerCase()){res.status(403).json({error:"forbidden"});return;} }
 
   const { merchantId } = req.body as { merchantId?: string };
   if (!merchantId) return res.status(400).json({ error: "Missing merchantId" });

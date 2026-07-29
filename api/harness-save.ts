@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { rejectCrossOrigin } from "./_guard";
 
 // Internal harness persistence: uploads a result image to the product-images bucket under
 // harness/ using the service-role key (the harness page is unauthenticated), and returns its
@@ -12,7 +11,7 @@ export const config = {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
-  if (rejectCrossOrigin(req, res)) return;
+  { const _o=String(req.headers.origin||req.headers.referer||""); let _h=""; try{_h=new URL(_o).host.toLowerCase();}catch{} if(!_h||_h!==String(req.headers.host||"").toLowerCase()){res.status(403).json({error:"forbidden"});return;} }
 
   const gate = process.env.HARNESS_TOKEN?.trim();
   if (gate && req.headers["x-harness-token"] !== gate) return res.status(403).json({ error: "forbidden" });

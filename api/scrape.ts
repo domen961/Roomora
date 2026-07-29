@@ -1,7 +1,6 @@
 // Vercel serverless function — runs server-side to bypass browser CORS
 // GET /api/scrape?url=...           → returns { html: string }
 // GET /api/scrape?url=...&type=image → returns { data: base64, mimeType: string }
-import { rejectCrossOrigin } from "./_guard";
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -34,7 +33,7 @@ const BLOCKING_STATUSES = new Set([403, 429, 503]);
 
 export default async function handler(req: any, res: any) {
   res.setHeader("Access-Control-Allow-Methods", "GET");
-  if (rejectCrossOrigin(req, res)) return;
+  { const _o=String(req.headers.origin||req.headers.referer||""); let _h=""; try{_h=new URL(_o).host.toLowerCase();}catch{} if(!_h||_h!==String(req.headers.host||"").toLowerCase()){res.status(403).json({error:"forbidden"});return;} }
 
   const url  = req.query?.url  as string | undefined;
   const type = req.query?.type as string | undefined;
