@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Grid3x3, Loader2 } from "lucide-react";
+import { Download, RefreshCw, RotateCcw, Share2, Sparkles, Grid3x3, Wand2, Loader2 } from "lucide-react";
 import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
@@ -23,18 +23,22 @@ export default function ResultStep({ result, productName, category, onReset, onR
   const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
   const regenHint = freeRegenAvailable ? t("regenFree") : t("regenAgain");
 
-  // "Fix" correction pass — refines the current result in place (repeatable).
+  // "Fix"/"HD" passes — refine or upgrade the current result in place (repeatable).
   const [fixed, setFixed] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
+  const [busyLabel, setBusyLabel] = useState("");
+  const [isHd, setIsHd] = useState(false);
   const shown = fixed ?? result;
 
   const handleFix = async (mode: RefineMode) => {
     setFixing(true);
+    setBusyLabel(mode === "hd" ? t("generatingHd") : t("fixing"));
     try {
       const out = await refinePlacement(shown, category, mode);
       setFixed(out);
+      if (mode === "hd") setIsHd(true);
     } catch (err) {
-      console.error("[Furora] fix failed:", err);
+      console.error("[Furora] refine failed:", err);
     } finally {
       setFixing(false);
     }
@@ -72,7 +76,7 @@ export default function ResultStep({ result, productName, category, onReset, onR
           <div className="absolute inset-0 flex items-center justify-center bg-black/50">
             <div className="flex flex-col items-center gap-2 text-white">
               <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="text-sm">{t("fixing")}</span>
+              <span className="text-sm">{busyLabel}</span>
             </div>
           </div>
         )}
@@ -111,6 +115,13 @@ export default function ResultStep({ result, productName, category, onReset, onR
               <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
             </button>
           </div>
+          {/* HD — regenerate at full quality on demand */}
+          {!isHd && (
+            <button onClick={() => handleFix("hd")} disabled={fixing}
+              className="w-full max-w-xs flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/80 active:scale-95 transition-transform disabled:opacity-50">
+              <Wand2 className="h-4 w-4" />{t("makeHd")}
+            </button>
+          )}
           {/* Regenerate — separated with hint */}
           {onRegenerate && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
@@ -154,7 +165,7 @@ export default function ResultStep({ result, productName, category, onReset, onR
             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50">
               <div className="flex flex-col items-center gap-2 text-white">
                 <Loader2 className="h-8 w-8 animate-spin" />
-                <span className="text-sm">{t("fixing")}</span>
+                <span className="text-sm">{busyLabel}</span>
               </div>
             </div>
           )}
@@ -185,8 +196,13 @@ export default function ResultStep({ result, productName, category, onReset, onR
             <Button variant="outline" size="sm" onClick={() => handleFix("floor")} className="gap-2" disabled={fixing}>
               <Grid3x3 className="h-4 w-4" />{t("fixFloor")}
             </Button>
+            {!isHd && (
+              <Button variant="outline" size="sm" onClick={() => handleFix("hd")} className="gap-2" disabled={fixing}>
+                <Wand2 className="h-4 w-4" />{t("makeHd")}
+              </Button>
+            )}
           </div>
-          <p className="text-xs text-muted-foreground">{t("fixHint")}</p>
+          <p className="text-xs text-muted-foreground">{isHd ? t("hdReady") : t("fixHint")}</p>
         </div>
 
         {/* Regenerate — separated with hint */}

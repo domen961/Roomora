@@ -202,11 +202,13 @@ async function prepareProductImage(src: string, maxW: number, maxH: number, qual
 }
 
 /** Calls the OpenAI image-edit proxy (gpt-image-2). Returns a data URL. */
-async function callOpenAIImage(promptText: string, images: string[], size: string): Promise<string> {
+type ImageQuality = "low" | "medium" | "high";
+
+async function callOpenAIImage(promptText: string, images: string[], size: string, quality: ImageQuality): Promise<string> {
   const res = await fetch("/api/openai-image", {
     method:  "POST",
     headers: { "Content-Type": "application/json" },
-    body:    JSON.stringify({ prompt: promptText, images, size }),
+    body:    JSON.stringify({ prompt: promptText, images, size, quality }),
   });
   if (!res.ok) {
     const t = await res.text().catch(() => "");
@@ -217,9 +219,12 @@ async function callOpenAIImage(promptText: string, images: string[], size: strin
   return data.image as string;
 }
 
-/** Single-image edit: one prompt + ordered images (room first, then product references). */
-async function generateImage(promptText: string, images: string[], size: string): Promise<string> {
-  return callOpenAIImage(promptText, images, size);
+/**
+ * Single-image edit: one prompt + ordered images (room first, then product references).
+ * Default quality "low" ≈ 27s (the fast preview); "high" is the on-demand HD render.
+ */
+async function generateImage(promptText: string, images: string[], size: string, quality: ImageQuality = "low"): Promise<string> {
+  return callOpenAIImage(promptText, images, size, quality);
 }
 
 /**
@@ -233,13 +238,13 @@ export async function generateProductAltView(
   throw new Error("alt-view generation removed");
 }
 
-export type RefineMode = "straighten" | "floor";
+export type RefineMode = "straighten" | "floor" | "hd";
 
 /**
- * Targeted correction pass for the "Fix" buttons: re-edits a finished placement with ONE bold,
- * specific instruction (a vague "fix what's wrong" pass does nothing — gpt-image-2 needs a
- * concrete change). Operates on the RESULT image alone (no original room), so it can never
- * reintroduce the old furniture.
+ * Result-image passes for the "Fix" buttons and the HD render. Operates on the RESULT image
+ * alone (no original room), so it can never reintroduce the old furniture.
+ *  - straighten/floor: targeted correction at "low" quality (fast, matches the preview).
+ *  - hd: re-render the whole thing at "medium" quality for a crisp, downloadable version.
  */
 export async function refinePlacement(
   resultImage: string, category: string | null | undefined, mode: RefineMode,
@@ -253,11 +258,14 @@ export async function refinePlacement(
     ? `The ${label} in this photo is CROOKED — it is angled/rotated relative to the wall behind it. ` +
       `Rotate the ${label} so it sits STRAIGHT: its back flush and PARALLEL to the wall directly behind it, squared to the room and aligned with the floor and wall lines, its front facing straight out into the room. ` +
       `This is the ONLY change — keep the ${label}'s exact appearance, colour, size and floor position, and keep the room, camera angle, framing, lighting and every other object identical. Output only the corrected photo.`
-    : `The floor in this photo is inconsistent — the wood planks / tiles do not all run in the same direction, or there is a visible seam where furniture was changed. ` +
+    : mode === "floor"
+    ? `The floor in this photo is inconsistent — the wood planks / tiles do not all run in the same direction, or there is a visible seam where furniture was changed. ` +
       `Re-render ONLY the floor so every plank/tile runs in ONE straight, consistent direction that matches the room's perspective, with no mismatched seams or patches. ` +
-      `Keep the ${label}, the walls, and every other object exactly the same — change nothing but the floor. Output only the corrected photo.`;
+      `Keep the ${label}, the walls, and every other object exactly the same — change nothing but the floor. Output only the corrected photo.`
+    : `Re-render this exact photo at maximum detail, resolution and sharpness. Keep the composition, colours, every object, the ${label}, the camera angle and framing 100% identical — do NOT move, add, remove, recolour or restyle anything. Only increase the visual fidelity and crispness. Output only the enhanced photo.`;
 
-  const raw = await generateImage(prompt, [resized], "auto");
+  const quality: ImageQuality = mode === "hd" ? "medium" : "low";
+  const raw = await generateImage(prompt, [resized], "auto", quality);
   return cropToRatio(raw, w, h);
 }
 
