@@ -149,17 +149,17 @@ export default function ResultStep({ result, productName, category, onReset, onR
         </div>
       </header>
 
-      <main className="flex-1 max-w-2xl mx-auto w-full px-4 py-8 flex flex-col gap-6">
+      <main className="flex-1 max-w-4xl mx-auto w-full px-4 py-8 flex flex-col gap-6">
         <div>
           <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">{t("resultLabel")}</p>
           <h1 className="text-3xl text-primary">{productName} {t("inYourRoom")}</h1>
         </div>
 
-        <div className="relative">
+        <div className="relative flex justify-center">
           <img
             src={shown}
             alt={`${productName} placed in room`}
-            className="w-full rounded-xl border border-border object-contain shadow-[var(--shadow-md)]"
+            className="mx-auto max-h-[72vh] w-auto max-w-full rounded-xl border border-border object-contain shadow-[var(--shadow-md)]"
           />
           {fixing && (
             <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/50">
