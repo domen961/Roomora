@@ -25,16 +25,17 @@ export default async function handler(req: any, res: any) {
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) return res.status(500).json({ error: "OPENAI_API_KEY not set" });
 
-  const { prompt, images, size } = req.body as { prompt: string; images: string[]; size?: string };
+  const { prompt, images, size, quality } = req.body as { prompt: string; images: string[]; size?: string; quality?: string };
   if (!prompt || !Array.isArray(images) || images.length === 0)
     return res.status(400).json({ error: "Missing prompt or images" });
+  const q = ["low", "medium", "high"].includes(String(quality)) ? String(quality) : "medium";
 
   try {
     const form = new FormData();
     form.append("model", "gpt-image-2");
     form.append("prompt", prompt);
     form.append("size", size || "auto");
-    form.append("quality", "medium");        // gpt-image-2 "thinks" — high exceeds the 60s Hobby function limit; medium fits
+    form.append("quality", q);               // low | medium | high (client-overridable; default medium)
     images.forEach((dataUrl, i) => {
       const conv = dataUrlToBlob(dataUrl);
       if (conv) form.append("image[]", conv.blob, `image_${i}.${conv.ext}`);
