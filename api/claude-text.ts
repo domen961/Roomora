@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { rejectCrossOrigin } from "./_guard";
 
 // Text extraction endpoint (product import): runs a prompt through Claude Haiku and returns
 // the raw text (expected to be JSON). Replaces the old Gemini-text endpoint — no Google dependency.
@@ -9,6 +10,7 @@ export const config = {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+  if (rejectCrossOrigin(req, res)) return;
 
   const { prompt } = req.body as { prompt: string };
   if (!prompt) return res.status(400).json({ error: "Missing prompt" });

@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { rejectCrossOrigin } from "./_guard";
 
 // Sensitive, targeted "is the old sofa fully gone?" check used by the erase verify-retry
 // loop. The general claude-measure inventory misses small foreground/edge fragments; this
@@ -10,6 +11,7 @@ export const config = {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+  if (rejectCrossOrigin(req, res)) return;
 
   const { imageDataUrl } = req.body as { imageDataUrl: string };
   if (!imageDataUrl) return res.status(400).json({ error: "Missing imageDataUrl" });

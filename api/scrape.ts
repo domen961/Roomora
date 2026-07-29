@@ -1,6 +1,7 @@
 // Vercel serverless function — runs server-side to bypass browser CORS
 // GET /api/scrape?url=...           → returns { html: string }
 // GET /api/scrape?url=...&type=image → returns { data: base64, mimeType: string }
+import { rejectCrossOrigin } from "./_guard";
 
 const USER_AGENTS = [
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
@@ -32,8 +33,8 @@ function buildHeaders(url: string, type: string | undefined, uaIndex: number): R
 const BLOCKING_STATUSES = new Set([403, 429, 503]);
 
 export default async function handler(req: any, res: any) {
-  res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET");
+  if (rejectCrossOrigin(req, res)) return;
 
   const url  = req.query?.url  as string | undefined;
   const type = req.query?.type as string | undefined;

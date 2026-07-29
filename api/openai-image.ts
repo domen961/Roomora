@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { rejectCrossOrigin } from "./_guard";
 
 // Server proxy to OpenAI's image-edit endpoint (gpt-image-1). Takes the room photo + product
 // reference images (as data URLs) plus a prompt, forwards them as multipart to OpenAI, and
@@ -20,6 +21,7 @@ function dataUrlToBlob(dataUrl: string): { blob: Blob; ext: string } | null {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+  if (rejectCrossOrigin(req, res)) return;
 
   const key = process.env.OPENAI_API_KEY?.trim();
   if (!key) return res.status(500).json({ error: "OPENAI_API_KEY not set" });

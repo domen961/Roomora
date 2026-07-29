@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, Navigate } from "react-router-dom";
 import { getProducts } from "@/lib/db";
 import type { Product } from "@/lib/products";
 import { placeInRoom } from "@/lib/gemini";
@@ -76,6 +76,10 @@ async function urlToDataUrl(url: string): Promise<string> {
 export default function HarnessPage() {
   const [params] = useSearchParams();
   const shopId = params.get("shop") || DEFAULT_SHOP;
+  // Gate: internal tool. Requires ?key=<VITE_HARNESS_KEY>. Closed by default (no key set → off),
+  // so it can't be discovered and used to fire expensive calls.
+  const harnessKey = import.meta.env.VITE_HARNESS_KEY as string | undefined;
+  const authorized = !!harnessKey && params.get("key") === harnessKey;
 
   const [rooms, setRooms] = useState<RoomManifest[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -198,6 +202,7 @@ export default function HarnessPage() {
   const autoStarted = useRef(false);
   useEffect(() => {
     if (autoStarted.current) return;
+    if (!authorized) return;
     if (params.get("run") !== "1") return;
     if (!rooms.length || !products.length) return;
     autoStarted.current = true;
@@ -246,6 +251,9 @@ export default function HarnessPage() {
 
   const verdictColor = (v?: string) =>
     v === "pass" ? "bg-green-600" : v === "warn" ? "bg-amber-600" : v === "fail" ? "bg-red-600" : "bg-neutral-600";
+
+  // Not authorized → behave like an unknown route.
+  if (!authorized) return <Navigate to="/" replace />;
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-100 p-6">

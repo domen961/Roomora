@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { rejectCrossOrigin } from "./_guard";
 
 // Internal harness grader: given the BEFORE room, the AFTER result, and a product reference,
 // score the placement on erase completeness, scale accuracy and placement quality so the
@@ -16,6 +17,7 @@ function imgPart(dataUrl: string) {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+  if (rejectCrossOrigin(req, res)) return;
 
   const { roomDataUrl, outputDataUrl, productRefDataUrl, productName, category, dims } =
     req.body as { roomDataUrl: string; outputDataUrl: string; productRefDataUrl?: string; productName: string; category?: string | null; dims?: string };

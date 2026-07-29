@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { rejectCrossOrigin } from "./_guard";
 
 export const config = {
   api: { bodyParser: { sizeLimit: "1mb" } },
@@ -6,6 +7,7 @@ export const config = {
 
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") return res.status(405).end();
+  if (rejectCrossOrigin(req, res)) return;
 
   const { url } = req.body as { url: string };
   if (!url) return res.status(400).json({ error: "Missing url" });
