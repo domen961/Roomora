@@ -4,11 +4,13 @@ import Logo from "@/components/Logo";
 import { Button } from "@/components/ui/button";
 import { t } from "@/lib/i18n";
 import { refinePlacement, type RefineMode } from "@/lib/gemini";
+import { consumeGenPoint } from "@/lib/quota";
 
 interface Props {
   result:             string;
   productName:        string;
   category?:          string | null;   // for the Fix correction prompt
+  merchantId?:        string;          // to charge a Gen Point for Fix/HD
   onReset:            () => void;
   onRegenerate?:      () => void;  // re-run with the same room photo
   freeRegenAvailable?: boolean;    // true until the one free regeneration is used
@@ -19,7 +21,7 @@ const isMobile =
   (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
     (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
 
-export default function ResultStep({ result, productName, category, onReset, onRegenerate, freeRegenAvailable }: Props) {
+export default function ResultStep({ result, productName, category, merchantId, onReset, onRegenerate, freeRegenAvailable }: Props) {
   const filename = `furora-${productName.replace(/\s+/g, "-").toLowerCase()}.jpg`;
   const regenHint = freeRegenAvailable ? t("regenFree") : t("regenAgain");
 
@@ -28,12 +30,18 @@ export default function ResultStep({ result, productName, category, onReset, onR
   const [fixing, setFixing] = useState(false);
   const [busyLabel, setBusyLabel] = useState("");
   const [isHd, setIsHd] = useState(false);
+  const [quotaMsg, setQuotaMsg] = useState("");
   const shown = fixed ?? result;
 
   const handleFix = async (mode: RefineMode) => {
     setFixing(true);
     setBusyLabel(mode === "hd" ? t("generatingHd") : t("fixing"));
+    setQuotaMsg("");
     try {
+      // Fix/HD are AI generations — charge a Gen Point (metered tiers) so heavy use is billed,
+      // not absorbed. Fails open on server/network error; Custom/demo don't deduct.
+      const quota = await consumeGenPoint(merchantId ?? "");
+      if (!quota.ok) { setQuotaMsg(t("quotaExhausted")); return; }
       const out = await refinePlacement(shown, category, mode);
       setFixed(out);
       if (mode === "hd") setIsHd(true);
@@ -122,6 +130,7 @@ export default function ResultStep({ result, productName, category, onReset, onR
               <Wand2 className="h-4 w-4" />{t("makeHd")}
             </button>
           )}
+          {quotaMsg && <p className="text-xs text-red-300 text-center max-w-xs">{quotaMsg}</p>}
           {/* Regenerate — separated with hint */}
           {onRegenerate && (
             <div className="flex flex-col items-center gap-1.5 w-full max-w-xs">
@@ -202,7 +211,7 @@ export default function ResultStep({ result, productName, category, onReset, onR
               </Button>
             )}
           </div>
-          <p className="text-xs text-muted-foreground">{isHd ? t("hdReady") : t("fixHint")}</p>
+          <p className={`text-xs ${quotaMsg ? "text-destructive" : "text-muted-foreground"}`}>{quotaMsg || (isHd ? t("hdReady") : t("fixHint"))}</p>
         </div>
 
         {/* Regenerate — separated with hint */}

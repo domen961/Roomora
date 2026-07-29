@@ -87,6 +87,7 @@ export default function TryPage() {
         result={result}
         productName={product.name}
         category={product.category}
+        merchantId={shopId!}
         freeRegenAvailable={regenCount === 0}
         onReset={() => { setResult(null); setLastRoomPhoto(""); setRegenerating(false); setRegenCount(0); setPhase("room"); }}
         onRegenerate={lastRoomPhoto ? () => { setResult(null); setRegenerating(true); setRegenCount((c) => c + 1); setPhase("room"); } : undefined}
