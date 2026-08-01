@@ -93,6 +93,7 @@ export default function RoomStep({ product, merchantId, onResult, onBack, onPhot
   // Start camera on mobile
   useEffect(() => {
     if (!isMobile) return;
+    if (autoProcessPhoto) return;   // regenerate: re-running an existing photo — no camera needed
     (async () => {
       try {
         let stream: MediaStream;

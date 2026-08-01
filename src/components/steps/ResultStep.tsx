@@ -120,10 +120,13 @@ export default function ResultStep({ result, productName, category, merchantId, 
                   <Wand2 className="h-4 w-4" />{t("makeHd")}
                 </button>
               )}
-              <button onClick={onReset} disabled={fixing}
-                className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/75 active:scale-95 transition-transform disabled:opacity-50">
-                <RotateCcw className="h-4 w-4" />{t("retry")}
-              </button>
+              {onRegenerate && (
+                <button onClick={onRegenerate} disabled={fixing}
+                  className="w-full flex items-center justify-center gap-2 rounded-xl border border-white/25 bg-white/5 backdrop-blur-sm py-2.5 text-sm font-medium text-white/75 active:scale-95 transition-transform disabled:opacity-50">
+                  <RefreshCw className="h-4 w-4" />{t("regenerate")}
+                </button>
+              )}
+              {onRegenerate && freeRegenAvailable && <p className="text-white/45 text-[11px] text-center">{regenHint}</p>}
               {quotaMsg && <p className="text-xs text-red-300 text-center">{quotaMsg}</p>}
             </div>
           )}
@@ -134,20 +137,15 @@ export default function ResultStep({ result, productName, category, merchantId, 
               className="flex-1 flex items-center justify-center gap-2 rounded-xl bg-primary py-3 text-sm font-semibold text-black active:scale-95 transition-transform disabled:opacity-50">
               <Download className="h-4 w-4" />{t("download")}
             </button>
-            {onRegenerate && (
-              <button onClick={onRegenerate} disabled={fixing}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
-                <RefreshCw className="h-4 w-4" />{t("again")}
-              </button>
-            )}
+            <button onClick={onReset} disabled={fixing}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm py-3 text-sm font-medium text-white active:scale-95 transition-transform disabled:opacity-50">
+              <RotateCcw className="h-4 w-4" />{t("retry")}
+            </button>
             <button onClick={() => setShowOptions((v) => !v)} disabled={fixing} aria-expanded={showOptions} aria-label={t("moreOptions")}
               className={`px-4 flex items-center justify-center rounded-xl border-2 backdrop-blur-sm py-3 active:scale-95 transition-transform disabled:opacity-50 ${showOptions ? "border-primary/60 bg-primary/20 text-white" : "border-white/40 bg-white/10 text-white"}`}>
               <SlidersHorizontal className="h-4 w-4" />
             </button>
           </div>
-          {onRegenerate && freeRegenAvailable && !showOptions && (
-            <p className="text-white/45 text-[11px]">{regenHint}</p>
-          )}
         </div>
       </div>
     );
