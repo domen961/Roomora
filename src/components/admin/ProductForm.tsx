@@ -108,13 +108,24 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     if (extracted.imageUrls.length) setExtractedImages(extracted.imageUrls);
   };
 
+  const isEmptyExtract = (d: Awaited<ReturnType<typeof extractProductData>>) =>
+    !d.name && !d.description && !d.length_cm && !d.width_cm && !d.height_cm && d.imageUrls.length === 0;
+
   const handleImport = async () => {
     if (!importUrl.trim() || importing) return;
     setImporting(true);
     setImportError("");
     setExtractedImages([]);
     try {
-      applyExtracted(await extractProductData(importUrl.trim()));
+      const data = await extractProductData(importUrl.trim());
+      if (isEmptyExtract(data)) {
+        // Reached the page but got nothing usable — almost always anti-bot protection
+        // (Cloudflare) returning a challenge page instead of the product. Offer the fallback.
+        setImportError("Couldn't read this page automatically — it's likely protected by anti-bot security. Paste the page source below, or fill in the details by hand.");
+        setShowPaste(true);
+        return;
+      }
+      applyExtracted(data);
       setShowPaste(false);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
@@ -134,7 +145,12 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     setExtractedImages([]);
     try {
       const base = importUrl.trim() || "https://example.com";
-      applyExtracted(await extractProductDataFromHtml(pastedHtml.slice(0, 500_000), base));
+      const data = await extractProductDataFromHtml(pastedHtml.slice(0, 500_000), base);
+      if (isEmptyExtract(data)) {
+        setImportError("Couldn't find product details in the pasted source. Make sure you copied the whole page (Ctrl+U → Ctrl+A → Ctrl+C), or fill in the details by hand.");
+        return;
+      }
+      applyExtracted(data);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
