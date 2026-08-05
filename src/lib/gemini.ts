@@ -227,17 +227,6 @@ async function generateImage(promptText: string, images: string[], size: string,
   return callOpenAIImage(promptText, images, size, quality);
 }
 
-/**
- * DEPRECATED / inert. The 75° "top view" alt-view generation ran on Gemini and its output
- * (image_2/image_3) is no longer used at placement time. Kept as a stub so the admin UI still
- * compiles; the "AI top views" section in ProductForm is now inert. TODO: remove that UI.
- */
-export async function generateProductAltView(
-  _productImgs: string[], _furnitureType: string, _variant: "perspective" | "front" = "perspective",
-): Promise<string> {
-  throw new Error("alt-view generation removed");
-}
-
 export type RefineMode = "straighten" | "floor" | "hd";
 
 /**

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Loader2, Pencil, Plus, Trash2, ImageIcon, X, Upload } from "lucide-react";
-import { generateVariant, generateProductAltView, type VariantPart } from "@/lib/gemini";
+import { generateVariant, type VariantPart } from "@/lib/gemini";
 import { getVariants, saveVariant, deleteVariant, renameVariant, type ProductVariant, type StoredPartConfig } from "@/lib/db";
 import type { Product } from "@/lib/products";
 
@@ -207,7 +207,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
   const uploadSlotRefs = useRef<(HTMLInputElement | null)[]>([null, null]);
 
   // ── Top-view generation from uploaded images ─────────────────────────────
-  const [generatingTopViews, setGeneratingTopViews] = useState(false);
 
   const updateRow = (id: string, patch: Partial<PartRow>) =>
     setPartRows((prev) => prev.map((r) => r.id === id ? { ...r, ...patch } : r));
@@ -294,29 +293,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
       setHasGenerated(true);
     };
     reader.readAsDataURL(file);
-  };
-
-  // ── Generate 75° overhead views from whatever is in slots 0+1 ─────────────
-  const handleGenerateTopViews = async () => {
-    const imgs = ([previewImages[0], previewImages[1]] as (string | null)[]).filter(Boolean) as string[];
-    if (imgs.length === 0) return;
-    setGeneratingTopViews(true);
-    setGenerating((prev) => { const n = [...prev] as boolean[]; n[2] = true; n[3] = true; return n; });
-    try {
-      const [view2, view3] = await Promise.all([
-        generateProductAltView(imgs, product.category || "furniture", "perspective").catch(() => null),
-        generateProductAltView(imgs, product.category || "furniture", "front").catch(() => null),
-      ]);
-      setPreviewImages((prev) => {
-        const next = [...prev] as (string | null)[];
-        if (view2) next[2] = view2;
-        if (view3) next[3] = view3;
-        return next;
-      });
-    } finally {
-      setGenerating([false, false, false, false]);
-      setGeneratingTopViews(false);
-    }
   };
 
   // ── Apply variant generation ──────────────────────────────────────────────
@@ -831,23 +807,6 @@ export default function VariantCreator({ product, merchantId }: Props) {
             onChange={(e) => handleSlotUpload(0, e)} />
           <input ref={(el) => { uploadSlotRefs.current[1] = el; }} type="file" accept="image/*" className="hidden"
             onChange={(e) => handleSlotUpload(1, e)} />
-
-          {/* Generate 75° views from uploaded/generated slot 0+1 images */}
-          {(previewImages[0] || previewImages[1]) && (
-            <button
-              onClick={handleGenerateTopViews}
-              disabled={generatingTopViews || isApplying}
-              className="rounded-lg border border-border bg-card px-3 py-1.5 text-xs text-muted-foreground
-                         hover:bg-secondary hover:text-foreground transition-colors
-                         disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-            >
-              {generatingTopViews ? (
-                <><Loader2 className="h-3 w-3 animate-spin" />Generating top views…</>
-              ) : (
-                <>Generate 75° views</>
-              )}
-            </button>
-          )}
 
           {/* Apply button */}
           <button

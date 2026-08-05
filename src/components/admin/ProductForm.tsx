@@ -1,13 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import {
-  Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles, RefreshCw, ArrowLeftRight,
+  Loader2, CheckCircle, X, ImagePlus, Link, Plus, Sparkles, ArrowLeftRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { saveProduct, updateProduct } from "@/lib/db";
 import type { Product, FurnitureCategory } from "@/lib/products";
 import { FURNITURE_CATEGORIES } from "@/lib/products";
-import { extractProductData, extractProductDataFromHtml, generateProductAltView } from "@/lib/gemini";
+import { extractProductData, extractProductDataFromHtml } from "@/lib/gemini";
 
 interface Props {
   merchantId:      string;
@@ -49,53 +49,12 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
   const [previewUrl,  setPreviewUrl]  = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
 
-  // AI top-down views (image_2 = 75° diagonal, image_3 = 75° front)
-  const [altView0,           setAltView0]           = useState<string | null>(initialProduct?.images[2] ?? null);
-  const [altView1,           setAltView1]           = useState<string | null>(initialProduct?.images[3] ?? null);
-  const [altView0Generating, setAltView0Generating] = useState(false);
-  const [altView1Generating, setAltView1Generating] = useState(false);
-
-  // Refs to avoid stale-closure issues in the auto-generate effect
-  const generating0Ref      = useRef(false);
-  const generating1Ref      = useRef(false);
-  const altView0Ref         = useRef(altView0);
-  const altView1Ref         = useRef(altView1);
-  const prevPhotosLengthRef = useRef(
-    (initialProduct?.images ?? []).filter((_, i) => i < 2).filter(Boolean).length,
-  );
-  altView0Ref.current = altView0;
-  altView1Ref.current = altView1;
-
-  // Auto-generate both alt views whenever a photo is ADDED (count increases)
-  useEffect(() => {
-    const prev = prevPhotosLengthRef.current;
-    prevPhotosLengthRef.current = photos.length;
-    if (photos.length === 0 || photos.length <= prev) return;
-
-    if (!altView0Ref.current && !generating0Ref.current) {
-      generating0Ref.current = true;
-      setAltView0Generating(true);
-      generateProductAltView(photos, category || "chair", "perspective")
-        .then(setAltView0)
-        .catch((e) => console.error("Alt view 0 failed:", e))
-        .finally(() => { generating0Ref.current = false; setAltView0Generating(false); });
-    }
-    if (!altView1Ref.current && !generating1Ref.current) {
-      generating1Ref.current = true;
-      setAltView1Generating(true);
-      generateProductAltView(photos, category || "chair", "front")
-        .then(setAltView1)
-        .catch((e) => console.error("Alt view 1 failed:", e))
-        .finally(() => { generating1Ref.current = false; setAltView1Generating(false); });
-    }
-  }, [photos]); // eslint-disable-line react-hooks/exhaustive-deps
-
   // Save
   const [saving,    setSaving]    = useState(false);
   const [saveError, setSaveError] = useState("");
 
   const canSave = name.trim().length > 0 && photos.length > 0;
-  const isBusy  = importing || parsingHtml || saving || addingImageIdx !== null || altView0Generating || altView1Generating;
+  const isBusy  = importing || parsingHtml || saving || addingImageIdx !== null;
 
   // ── URL import ──────────────────────────────────────────────────────────────
   const applyExtracted = (extracted: Awaited<ReturnType<typeof extractProductData>>) => {
@@ -225,49 +184,11 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     addPhotoFiles(Array.from(e.dataTransfer.files));
   };
 
-  // ── AI top-down views ───────────────────────────────────────────────────────
-  const handleRegenerateAlt = async (variant: 0 | 1) => {
-    if (photos.length === 0) return;
-    if (variant === 0) {
-      if (generating0Ref.current) return;
-      generating0Ref.current = true;
-      setAltView0Generating(true);
-      try {
-        setAltView0(await generateProductAltView(photos, category || "chair", "perspective"));
-      } catch (e) { console.error("Alt view 0 regen failed:", e); }
-      finally { generating0Ref.current = false; setAltView0Generating(false); }
-    } else {
-      if (generating1Ref.current) return;
-      generating1Ref.current = true;
-      setAltView1Generating(true);
-      try {
-        setAltView1(await generateProductAltView(photos, category || "chair", "front"));
-      } catch (e) { console.error("Alt view 1 regen failed:", e); }
-      finally { generating1Ref.current = false; setAltView1Generating(false); }
-    }
-  };
-
-  // Swap the perspective/front slots, then regenerate BOTH top views from the new order
-  // (they were synthesised from the old primary photo, so they'd be wrong after a swap).
-  // Pass the swapped array explicitly — setPhotos is async, so `photos` is still stale here.
+  // Swap the perspective / front slots. gpt-image-2 synthesises the needed viewing angle at
+  // placement time, so no extra "top view" images are generated or stored.
   const handleSwapPhotos = () => {
-    if (photos.length !== 2 || generating0Ref.current || generating1Ref.current) return;
-    const swapped = [photos[1], photos[0]];
-    setPhotos(swapped);
-
-    generating0Ref.current = true;
-    setAltView0Generating(true);
-    generateProductAltView(swapped, category || "chair", "perspective")
-      .then(setAltView0)
-      .catch((e) => console.error("Alt view 0 regen failed:", e))
-      .finally(() => { generating0Ref.current = false; setAltView0Generating(false); });
-
-    generating1Ref.current = true;
-    setAltView1Generating(true);
-    generateProductAltView(swapped, category || "chair", "front")
-      .then(setAltView1)
-      .catch((e) => console.error("Alt view 1 regen failed:", e))
-      .finally(() => { generating1Ref.current = false; setAltView1Generating(false); });
+    if (photos.length !== 2) return;
+    setPhotos([photos[1], photos[0]]);
   };
 
   // ── Save ────────────────────────────────────────────────────────────────────
@@ -277,11 +198,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
     setSaveError("");
     try {
       const baseImages  = photos.filter(Boolean);
-      const finalImages = [
-        ...baseImages.slice(0, 2),
-        ...(altView0 ? [altView0] : []),
-        ...(altView1 ? [altView1] : []),
-      ];
+      const finalImages = baseImages.slice(0, 2);
 
       const dims = {
         length_cm: lengthCm ? parseFloat(lengthCm) : null,
@@ -608,8 +525,7 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
             <button
               type="button"
               onClick={handleSwapPhotos}
-              disabled={altView0Generating || altView1Generating}
-              title="Swap perspective / front — also regenerates the AI top views"
+              title="Swap perspective / front"
               className="flex items-center gap-1.5 h-8 px-4 rounded-full bg-primary text-primary-foreground text-xs font-semibold shadow-sm hover:bg-primary/90 active:scale-95 transition disabled:opacity-60"
             >
               <ArrowLeftRight className="h-3.5 w-3.5" />
@@ -662,77 +578,6 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
         )}
       </div>
 
-      {/* ── AI top-down views ── */}
-      <div className="flex flex-col gap-2">
-        <label className="text-xs uppercase tracking-widest text-muted-foreground">
-          Top views (AI) — 75° overhead
-        </label>
-
-        <div className="flex gap-3">
-          {/* Alt view 0: diagonal */}
-          {altView0Generating ? (
-            <div className="flex flex-col items-center justify-center h-24 w-24 rounded-md border border-border bg-muted/30 gap-1.5">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground text-center leading-tight">Diagonal<br/>view…</span>
-            </div>
-          ) : altView0 ? (
-            <div className="relative group">
-              <img src={altView0} alt="AI diagonal top view" onClick={() => setPreviewUrl(altView0)} className="h-24 w-24 rounded-md object-cover border border-border cursor-zoom-in" />
-              <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Diagonal</span>
-              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleRegenerateAlt(0)} disabled={isBusy || photos.length === 0} title="Re-generate"
-                  className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40">
-                  <RefreshCw className="h-2.5 w-2.5" />
-                </button>
-                <button onClick={() => setAltView0(null)} disabled={saving} title="Remove"
-                  className="h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center disabled:opacity-40">
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={() => handleRegenerateAlt(0)} disabled={isBusy || photos.length === 0}
-              className="h-24 w-24 rounded-md border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-[10px] text-center leading-tight">Generate<br/>diagonal</span>
-            </button>
-          )}
-
-          {/* Alt view 1: front */}
-          {altView1Generating ? (
-            <div className="flex flex-col items-center justify-center h-24 w-24 rounded-md border border-border bg-muted/30 gap-1.5">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-              <span className="text-[10px] text-muted-foreground text-center leading-tight">Front<br/>view…</span>
-            </div>
-          ) : altView1 ? (
-            <div className="relative group">
-              <img src={altView1} alt="AI front top view" onClick={() => setPreviewUrl(altView1)} className="h-24 w-24 rounded-md object-cover border border-border cursor-zoom-in" />
-              <span className="absolute bottom-1 left-1 text-[10px] bg-background/80 text-muted-foreground px-1 py-0.5 rounded">Front</span>
-              <div className="absolute -top-1.5 -right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button onClick={() => handleRegenerateAlt(1)} disabled={isBusy || photos.length === 0} title="Re-generate"
-                  className="h-5 w-5 rounded-full bg-primary text-primary-foreground flex items-center justify-center disabled:opacity-40">
-                  <RefreshCw className="h-2.5 w-2.5" />
-                </button>
-                <button onClick={() => setAltView1(null)} disabled={saving} title="Remove"
-                  className="h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center disabled:opacity-40">
-                  <X className="h-2.5 w-2.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button onClick={() => handleRegenerateAlt(1)} disabled={isBusy || photos.length === 0}
-              className="h-24 w-24 rounded-md border-2 border-dashed border-border hover:border-primary/50 flex flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
-              <Sparkles className="h-4 w-4" />
-              <span className="text-[10px] text-center leading-tight">Generate<br/>front</span>
-            </button>
-          )}
-        </div>
-
-        {photos.length === 0 && (
-          <p className="text-xs text-muted-foreground/50">Add product photos above to enable top view generation.</p>
-        )}
-      </div>
-
       {saveError && <p className="text-xs text-destructive">{saveError}</p>}
 
       {/* ── Actions ── */}
@@ -742,10 +587,8 @@ export default function ProductForm({ merchantId, initialProduct, onSave, onCanc
           disabled={!canSave || isBusy}
           className="flex-1 gap-2"
         >
-          {(saving || altView0Generating || altView1Generating) && <Loader2 className="h-4 w-4 animate-spin" />}
-          {saving ? "Saving…"
-            : (altView0Generating || altView1Generating) ? "Generating top views…"
-            : "Save product"}
+          {saving && <Loader2 className="h-4 w-4 animate-spin" />}
+          {saving ? "Saving…" : "Save product"}
         </Button>
         <Button variant="outline" onClick={onCancel} disabled={isBusy}>
           Cancel
