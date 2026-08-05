@@ -28,7 +28,13 @@ export default async function handler(req: any, res: any) {
       body: JSON.stringify({
         model:      "claude-haiku-4-5",
         max_tokens: 1024,
-        messages:   [{ role: "user", content: prompt }],
+        // System guard + assistant prefill "{" force a raw JSON object and prevent prose
+        // refusals like "I cannot extract…" (which broke JSON.parse on the client).
+        system:     "You output ONLY a raw JSON object. Never refuse, apologise, or add any prose or markdown. If the requested data is missing or the page is unusable, output {}.",
+        messages:   [
+          { role: "user", content: prompt },
+          { role: "assistant", content: "{" },
+        ],
       }),
     });
 
@@ -39,9 +45,9 @@ export default async function handler(req: any, res: any) {
     }
 
     const data = await response.json() as any;
-    let text: string = data?.content?.[0]?.text ?? "{}";
-    // Strip any accidental markdown fences so JSON.parse on the client succeeds.
-    text = text.replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
+    let text: string = data?.content?.[0]?.text ?? "";
+    // Re-attach the prefilled "{" and strip any stray fences.
+    text = ("{" + text).replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, "").trim();
     return res.json({ text });
   } catch (err) {
     console.error("claude-text error:", err);

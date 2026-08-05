@@ -785,7 +785,14 @@ ${pageText}`;
 
   const textData = await textRes.json();
   const rawText  = textData?.text ?? "{}";
-  const json     = JSON.parse(rawText);
+  // Parse defensively: grab the first {...} object and fall back to empty on anything unparseable
+  // (e.g. a model refusal or a scraped anti-bot page) instead of crashing the import.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let json: any = {};
+  try {
+    const m = rawText.match(/\{[\s\S]*\}/);
+    json = JSON.parse(m ? m[0] : rawText);
+  } catch { json = {}; }
 
   return {
     name:        json.name        ?? "",
